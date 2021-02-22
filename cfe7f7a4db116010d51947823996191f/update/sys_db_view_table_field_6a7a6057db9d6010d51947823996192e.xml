@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?><record_update table="sys_db_view_table_field">
+    <sys_db_view_table_field action="INSERT_OR_UPDATE">
+        <field>round_nr</field>
+        <sys_class_name>sys_db_view_table_field</sys_class_name>
+        <sys_created_by>bert-jan.fransen</sys_created_by>
+        <sys_created_on>2020-12-30 12:05:09</sys_created_on>
+        <sys_id>6a7a6057db9d6010d51947823996192e</sys_id>
+        <sys_mod_count>0</sys_mod_count>
+        <sys_name>round_nr</sys_name>
+        <sys_package display_value="PubQuiz" source="x_0221_pubquiz">cfe7f7a4db116010d51947823996191f</sys_package>
+        <sys_policy/>
+        <sys_scope display_value="PubQuiz">cfe7f7a4db116010d51947823996191f</sys_scope>
+        <sys_update_name>sys_db_view_table_field_6a7a6057db9d6010d51947823996192e</sys_update_name>
+        <sys_updated_by>bert-jan.fransen</sys_updated_by>
+        <sys_updated_on>2020-12-30 12:05:09</sys_updated_on>
+        <table>x_0221_pubquiz_quiz_round_m2m</table>
+        <view_table display_value="x_0221_pubquiz_quiz_round_m2m">40176c53db9d6010d519478239961991</view_table>
+    </sys_db_view_table_field>
+</record_update>

@@ -1,0 +1,598 @@
+<?xml version="1.0" encoding="UTF-8"?><record_update table="sys_script_include">
+    <sys_script_include action="INSERT_OR_UPDATE">
+        <access>package_private</access>
+        <active>true</active>
+        <api_name>x_0221_pubquiz.PubQuizJs</api_name>
+        <caller_access/>
+        <client_callable>false</client_callable>
+        <description/>
+        <name>PubQuizJs</name>
+        <script><![CDATA[var PubQuizJs = Class.create();
+PubQuizJs.prototype = {
+  initialize: function(){},
+
+  // library contains the constructors of the three main PubQuiz components
+  Quiz: Quiz,
+  Round: Round,
+  Question: Question
+}
+
+function Quiz(name){
+  this.FIELDS = [
+    'title',
+    'description'
+  ];
+  this.type = 'Quiz';
+  this.table = 'x_0221_pubquiz_quiz';
+  this.table_m2m = 'x_0221_pubquiz_quiz_round_m2m';
+  this._data = {};
+  this._data.name = name;
+  this._rounds = [];
+  gs.debug('name = '+name)
+  gs.debug('this._data.name = '+this._data.name)
+
+  return this;
+}
+
+Quiz.prototype = {
+  loadRaw: function(raw, version){
+    // loads the quiz from the raw google sheet data provided in raw
+    // function assumes header fields to be v2, headerTranslation allows different headers to be mapped to v2. 'v1' is a shortcut for the v1 to v2 mapping
+    // first, split the data into a definition sheet and all round sheets
+    var definitionSheet;
+    var roundSheets = raw.filter(function(sheet){
+        var re = /(\d+)[-_ ]+(.*)/;
+        var match = sheet.name.match(re);
+        if (match){
+            // name matches the pattern of a round. store its number and pass it through the filter
+            sheet._sequence = +match[1];
+            sheet._name = match[2];
+            return true;
+        } else {
+            // name does not match the pattern of a round; it is the definition sheet and it will not be passed through the filter
+            definitionSheet = sheet;
+            return false;
+        }
+    }).sort(function(a, b){
+        if (a._sequence < b._sequence){
+            return -1;
+        } else {
+            return 1;
+        }
+    })
+
+    var defs = {
+      columns: [],
+      rounds: [],
+      version: version
+    };
+
+    definitionSheet.data.forEach(function(row, index){
+      if (index > 0){ // first row is the header row, we ignore it
+        if (row[0] === 'column'){
+          // column names go on to the column array
+          defs.columns.push(row[3])
+        } else if (row[0] === 'round'){
+          defs.rounds.push(row[1])
+        } else {
+          // key/value pairs
+          defs[row[0]] = row[1]
+        }
+      }
+    });
+
+    // fieldsRow contains the index of the header row; it defaults to the first line
+    defs.fieldsRow = defs.fieldsRow || 0;
+    this.setValue('title', defs.title);
+    this.setValue('description', defs.description);
+
+
+
+
+    // roundSheets.length = 1;
+
+
+
+
+    this._rounds = roundSheets.map(function(roundSheet){
+      var rnd = new Round();
+      rnd.loadRaw(roundSheet, defs);
+      return rnd;
+    })
+
+    return this;
+  },
+
+  load: function(gr){
+    debug('Quiz#load')
+
+    // load the quiz into the object
+    load(this, gr);
+
+    // find all rounds in this quiz
+    this._rounds = loadChildren(this);
+    debug('=====> rounds added to quiz', this._rounds.length, Array.isArray(this._rounds))
+    debug(this._rounds[0].toString())
+    return this;
+  },  
+  
+  getRound: function(nr){
+    return this.getRounds()[nr-1];
+  },
+  
+  write: function(skipRecurse){
+    // writes quiz, by default rounds and questions are also written
+    var self = this;
+    var grQuiz = new GlideRecord(this.table);
+    grQuiz.setValue('title', this.getValue('title'));
+    grQuiz.setValue('description', this.getValue('description'));
+    var quizSydId = grQuiz.insert();
+
+    if (!skipRecurse){
+      this.getRounds().forEach((function(quizSydId){
+        return function(round, index){
+          var roundSysId = round.write();
+          self.linkQuizRound(quizSydId, roundSysId, index+1);
+        }
+      })(quizSydId));
+    }
+
+    return quizSydId;
+  },
+  
+  linkQuizRound: function(quizSysId, roundSysId, roundNumber){
+    debug('linkQuizRound', quizSysId, roundSysId, roundNumber)
+    var grM2m = new GlideRecord(this.table_m2m);
+    grM2m.setValue('parent', quizSysId);
+    grM2m.setValue('child', roundSysId);
+    grM2m.setValue('number', roundNumber);
+    return grM2m.insert();
+  },
+  
+  toJSON: function(){
+    var result = this._data;
+    result.rounds = this.getRounds().map(function(round){
+      return round.toJSON();
+    })
+
+    return result;
+  },
+  
+  toString: function(){
+    return JSON.stringify(this.toJSON());
+  },
+  
+  getValue: function(field){
+    return getValue(this, field);
+  },
+  
+  setValue: function(field, value){
+    return setValue(this, field, value);
+  },
+  
+  getRounds: function(){
+    return this._rounds;
+  },
+  
+  getQuerySets: function(){
+    var result = {};
+
+    // query table = quiz, query matches on sys_id
+    // quiz will not be part of the querySets, but rather the basis of the exporter
+//    result[this.table] = ['sys_id='+this.getValue('sys_id')];
+
+    // query table = quiz/round m2m, query matches all quiz-children
+    result[this.table_m2m] = ['parent='+this.getValue('sys_id')];
+
+    this.getRounds().forEach(function(round){
+      //round.getQuerySets(result);
+    });
+  
+    return result;
+  },
+  
+  exportXML: function(g_response, skipAttachments){
+    var querySets = this.getQuerySets();
+    var exporter = new ExportWithRelatedLists('x_0221_pubquiz_quiz', this.getValue('sys_id'));
+
+    // find all possible querySets and export them. easy peasy.
+    for (var table in querySets){
+      querySets[table].forEach(function(query){
+        // iterate over each query in the array for this table
+        exporter.addQuerySet(table, query);
+      })
+    }
+
+    exporter.setAttachments(!skipAttachments);
+    exporter.exportRecords(g_response);
+  }
+}
+
+function Round(){
+  debug('> Round constructor')
+  this.FIELDS = [
+    'theme_nl',
+    'theme_en'
+  ];
+  this.type = 'Round';
+  this.table = 'x_0221_pubquiz_round';
+  this.table_m2m = 'x_0221_pubquiz_round_question_m2m';
+
+  this._data = {};
+  this._questions = [];
+  return this;
+}
+
+Round.prototype = {
+  loadRaw: function(roundSheet, defs){
+    debug('Round#loadRaw', defs.language, theme)
+    var questions = roundSheet.data.splice(defs.headerRows, defs.QuestionsPerRound);
+    var header = roundSheet.data.splice(defs.fieldsRow, 1)[0];
+    var theme = roundSheet.name.replace(/.* - /, '');
+
+    if (defs.language === 'nl'){
+      this.setValue('theme_nl', theme);
+    } else {
+      this.setValue('theme_en', theme);
+    }
+
+    debug(theme, this.getValue('theme_nl'))
+
+    if (defs.version === 'v1'){
+      header = convertHeader(header);
+    }
+
+
+
+
+    // questions.length = 1;
+
+
+
+
+    this._questions = questions.map(function(line){
+      return new Question().loadRaw(header, line, defs);
+    })
+
+    return this;
+  },
+  
+  load: function(gr){
+    debug('Round#load')
+    // load the round into the object
+    load(this, gr);
+
+    // find all questions in this round
+    this._questions = loadChildren(this);
+    debug('=====> questions added to round', this._questions.length, Array.isArray(this._questions))
+    debug('question', this._questions[0].toString())
+    debug('round', this.toString())
+
+
+    return this;
+  },
+
+  getQuestion: function(nr){
+    gs.debug('getQuestion')
+    return this._questions[nr-1];
+  },
+  
+  write: function(skipRecurse){
+    // writes round, by default questions are also written
+    var self = this;
+    var grRound = new GlideRecord(this.table);
+
+    for (var field in this._data){
+      if (field != 'sys_id'){
+        grRound.setValue(field, this._data[field]);
+      }
+    }
+
+    var roundSysId = grRound.insert();
+
+    if (!skipRecurse){
+      this._questions.forEach((function(roundSysId){
+        return function(question, index){
+          var questionSysId = question.write();
+          self.linkRoundQuestion(roundSysId, questionSysId, index+1);
+        }
+      })(roundSysId));
+    }
+
+    return roundSysId;
+  },
+
+  linkRoundQuestion: function(roundSysId, questionSysId, questionNumber){
+    var grM2m = new GlideRecord(this.table_m2m);
+    grM2m.setValue('parent', roundSysId);
+    grM2m.setValue('child', questionSysId);
+    grM2m.setValue('number', questionNumber);
+    return grM2m.insert();
+  },
+  
+  toJSON: function(){
+    var result = this._data;
+    result.questions = this._questions.map(function(question){
+      return question.toJSON();
+    })
+
+    return result;
+  },
+  
+  toString: function(){
+    return JSON.stringify(this.toJSON());
+  },
+  
+  getValue: function(field){
+    return getValue(this, field);
+  },
+  
+  setValue: function(field, value){
+    return setValue(this, field, value);
+  },
+  
+  getQuestions: function(){
+    return this._questions;
+  },
+  
+  getQuerySets: function(result){
+    var result = {};
+
+    if (!Array.isArray(result[this.table])){
+      result[this.table] = []
+    }
+    result[this.table].push('sys_id='+this.getValue('sys_id'));
+
+    if (!Array.isArray(result[this.table_m2m])){
+      result[this.table_m2m] = [];
+    }
+    result[this.table_m2m].push('parent='+this.getValue('sys_id'))
+
+    this.getQuestions().forEach(function(question){
+      question.getQuerySets(result);
+    })
+  
+    return result;
+  }
+}
+
+function Question(){
+  this.FIELDS = [
+    'question_nl',
+    'question_en',
+    'answer_nl',
+    'answer_en',
+    'label_nl',
+    'label_en'
+  ]
+  this.type = 'Question';
+  this.table = 'x_0221_pubquiz_question';
+  this._data = {};
+
+  return this;
+}
+
+
+Question.prototype = {
+  loadRaw: function(header, line, defs){
+    gs.debug('Question#loadRaw')
+    var data = this._data;
+    header.forEach(function(fieldname, index){
+      data[fieldname] = line[index];
+    });
+
+    return this;
+  },
+  
+  load: function(gr){
+    debug('Question#load');
+    load(this, gr);
+    return this;
+  },
+  
+  write: function(){
+    var grQuestion = new GlideRecord(this.table);
+    var field;
+
+    for (field in this._data){
+      if (field != 'sys_id'){
+        grQuestion.setValue(field, this._data[field]);
+      }
+    }
+
+    return grQuestion.insert();
+  },
+  
+  toJSON: function(){
+    return this._data;
+  },
+  
+  toString: function(){
+    return JSON.stringify(this.toJSON());
+  },
+  
+  getValue: function(field){
+    return getValue(this, field);
+  },
+  
+  setValue: function(field, value){
+    return setValue(this, field, value);
+  },
+  
+  getQuerySets: function(result){
+    var result = {};
+
+    if (!Array.isArray(result[this.table])){
+      result[this.table] = []
+    }
+    result[this.table].push('sys_id='+this.getValue('sys_id'));
+
+    return result;
+  }
+
+}
+
+function convertHeader(header){
+  return header.map(function(field){
+    switch (field){
+      case 'languages.nl.text':   return 'question_nl';
+      case 'languages.nl.answer': return 'answer_nl';
+      case 'languages.nl.label':  return 'label_nl';
+      case 'languages.en.text':   return 'question_en';
+      case 'languages.en.answer': return 'answer_en';
+      case 'languages.en.label':  return 'label_en';
+      default:                    return field;
+    }
+  })
+}
+
+function val(obj, field, value){
+  if (obj.FIELDS.indexOf(field) > -1){
+    if (typeof value != 'undefined'){
+      obj._data[field] = value;
+    }
+  } else {
+    gs.error('Field "'+field+'" is not a valid field in object type '+obj.type)
+  }
+
+  return obj._data[field];
+}
+
+function setValue(obj, field, value){ return val(obj, field, value); }
+function getValue(obj, field){ return val(obj, field); }
+
+function load(obj, gr){
+  debug('load')
+  // loads GlideRecord fields into the _data-namespace of the object
+  // works for Quiz, Round and Question
+  // if the second argument is a sys_id, we retrieve the GlideRecord first
+  if (typeof gr === 'string'){
+    var sysId = gr;
+    gr = new GlideRecord(obj.table);
+    if (!gr.get(sysId)){
+      gs.error('Could not find record '+obj.table+'.'+sysId);
+      return;
+    }
+  }
+
+  debug('Found '+obj.type)
+
+  var field;
+  obj.FIELDS.push('sys_id');
+  obj.FIELDS.forEach(function(field){
+    obj._data[field] = gr.getValue(field);
+  })
+
+  debug('toString = '+obj.toString())
+
+  return obj;
+}
+
+function loadChildren(obj){
+  debug('loadChildren')
+  // finds all children for the current object and returns them in an array
+  var gr = new GlideRecord(obj.table_m2m);
+  var grChild;
+  var result = [];
+
+  gr.addQuery('parent', obj.getValue('sys_id'));
+  gr.orderBy('number');
+
+  //debug 
+  // gr.setLimit(1);
+
+  debug(gr.getEncodedQuery())
+  gr.query();
+  debug('found children: '+gr.getRowCount());
+
+  var o;
+  while (gr.next()){
+    grChild = gr.child.getRefRecord();
+    
+    o = (obj.type === 'Quiz') ? new Round() : new Question();
+
+    o.load(grChild);
+    debug(obj.type, o.type, grChild.getTableName())
+    debug('pushing child on array', o.toString())
+    result.push(o);
+  }
+
+  // result.forEach(function(item){ debug(item.type, item.getValue('sys_id'))})
+  debug('end; before returning result', result.length)
+  result.forEach(function(item, index){
+    debug(index, item.toString())
+  })
+  
+  return result;
+}
+
+function log(){
+  var args = Array.prototype.slice.call(arguments);
+  var type = args.shift();
+  var fn;
+  
+  args.forEach(function(arg, ix){
+
+    fn('arg# '+ix+' = '+arg+' (type '+typeof arg+')')
+  })
+}
+
+function debugSeperateLines(){
+  var args = Array.prototype.slice.call(arguments); 
+  args.forEach(function(arg, ix){
+    if (typeof arg != 'string'){
+      arg = JSON.stringify(arg);
+    }
+    gs.debug(arg)
+  })
+}
+
+function debug(){
+  var args = Array.prototype.slice.call(arguments); 
+  gs.info(args.join('  '))
+}
+
+
+
+
+/***************************************************************************/
+function test(){
+  gs.info('test')
+  var pq = new x_0221_pubquiz.PubQuizJs();
+var r = new pq.Round()
+r.load('a3488e35db612010d51947823996196e')
+debug('round to string', r.toString())
+
+return
+  var q = new pq.Quiz('test3');
+
+  q.load('e7488e35db612010d51947823996196d');
+  gs.debug(q.toString())
+
+  return;
+  var data = new loadData().get()
+  q.loadRaw(data, 'v1')
+  r = q.getRound(1);
+  qn = r.getQuestion(1);
+  gs.debug(qn._data.question_nl)
+  gs.debug(q.toString())
+  q.write();
+}
+// test()
+
+
+]]></script>
+        <sys_class_name>sys_script_include</sys_class_name>
+        <sys_created_by>admin</sys_created_by>
+        <sys_created_on>2021-01-04 14:10:49</sys_created_on>
+        <sys_id>3407fe30dbe12010d5194782399619a4</sys_id>
+        <sys_mod_count>117</sys_mod_count>
+        <sys_name>PubQuizJs</sys_name>
+        <sys_package display_value="PubQuiz" source="x_0221_pubquiz">cfe7f7a4db116010d51947823996191f</sys_package>
+        <sys_policy>read</sys_policy>
+        <sys_scope display_value="PubQuiz">cfe7f7a4db116010d51947823996191f</sys_scope>
+        <sys_update_name>sys_script_include_3407fe30dbe12010d5194782399619a4</sys_update_name>
+        <sys_updated_by>admin</sys_updated_by>
+        <sys_updated_on>2021-02-21 16:45:12</sys_updated_on>
+    </sys_script_include>
+</record_update>

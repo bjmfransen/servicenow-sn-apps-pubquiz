@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?><record_update table="sys_relationship">
+    <sys_relationship action="INSERT_OR_UPDATE">
+        <advanced>false</advanced>
+        <apply_to><![CDATA[if (table_name == 'sys_user')
+    answer = true;]]></apply_to>
+        <basic_apply_to>sys_user</basic_apply_to>
+        <basic_query_from>sys_user_group</basic_query_from>
+        <insert_callback><![CDATA[addMTOM();
+
+function addMTOM() {
+  var group_id = current.sys_id;
+  var user_id = parent.sys_id;
+  var gr = new GlideRecord('sys_user_grmember');
+  gr.initialize();
+  gr.group = group_id;
+  gr.user = user_id;
+  gr.insert();
+}]]></insert_callback>
+        <name>Member of Groups</name>
+        <query_from><![CDATA[answer = 'sys_user_group';]]></query_from>
+        <query_with><![CDATA[current.addQuery('mtm.sys_user_grmember.user', parent.sys_id);]]></query_with>
+        <reference_field/>
+        <related_list/>
+        <simple_reference>false</simple_reference>
+        <sys_class_name>sys_relationship</sys_class_name>
+        <sys_created_by>bert-jan.fransen</sys_created_by>
+        <sys_created_on>2020-12-29 15:54:19</sys_created_on>
+        <sys_id>aa559c83db116010d5194782399619bc</sys_id>
+        <sys_mod_count>0</sys_mod_count>
+        <sys_name>Member of Groups</sys_name>
+        <sys_package display_value="PubQuiz" source="x_0221_pubquiz">cfe7f7a4db116010d51947823996191f</sys_package>
+        <sys_policy/>
+        <sys_scope display_value="PubQuiz">cfe7f7a4db116010d51947823996191f</sys_scope>
+        <sys_update_name>sys_relationship_aa559c83db116010d5194782399619bc</sys_update_name>
+        <sys_updated_by>bert-jan.fransen</sys_updated_by>
+        <sys_updated_on>2020-12-29 15:54:19</sys_updated_on>
+    </sys_relationship>
+    <sys_translated_text action="delete_multiple" query="documentkey=aa559c83db116010d5194782399619bc"/>
+</record_update>

@@ -1,0 +1,533 @@
+<?xml version="1.0" encoding="UTF-8"?><record_update table="sys_script_include">
+    <sys_script_include action="INSERT_OR_UPDATE">
+        <access>public</access>
+        <active>true</active>
+        <api_name>x_0221_pubquiz.loadData</api_name>
+        <caller_access/>
+        <client_callable>false</client_callable>
+        <description/>
+        <name>loadData</name>
+        <script><![CDATA[var loadData = Class.create();
+loadData.prototype = {
+    initialize: function(){
+        gs.debug('@initialize');
+        this.data = d();
+    },
+	
+	get: function(){
+		return this.data;
+	},
+
+    load: function(){
+        gs.debug('@load')
+        this.splitAndSort();
+        this.setTranslation('v1'); // converts old header to new field names
+        this.processDefinitions();
+        this.createQuiz();
+    },
+    
+    splitAndSort: function(){
+        gs.debug('@splitAndSort')
+        // splits the data into definition and rounds, and sorts the rounds
+        var definitionSheet;
+        this.roundSheets = this.data.filter(function(sheet){
+            var re = /(\d+)[-_ ]+(.*)/;
+            var match = sheet.name.match(re);
+            if (match){
+                // name matches the pattern of a round. store its number and pass it through the filter
+                sheet._sequence = +match[1];
+                sheet._name = match[2];
+                return true;
+            } else {
+                // name does not match the pattern of a round; it is the definition sheet and it will not be passed through the filter
+                definitionSheet = sheet;
+                return false;
+            }
+        }).sort(function(a, b){
+            if (a._sequence < b._sequence){
+                return -1;
+            } else {
+                return 1;
+            }
+        })    
+        
+        //debug
+        // this.roundSheets.length = 1;
+        //end debug
+
+        this.definitionSheet = definitionSheet;
+
+        return this;
+    },
+    
+    setTranslation: function(arg){
+        gs.debug('@setTranslation')
+        switch (arg){
+            case 'v1': 
+                this.xlate = {
+                    'languages.nl.text': 'question_nl',
+                    'languages.en.text': 'question_en',
+                    'languages.nl.answer': 'answer_nl',
+                    'languages.en.answer': 'answer_en',
+                    'languages.nl.label': 'label_nl',
+                    'languages.en.Label': 'label_en'
+                }
+                break;
+            case 'v2':
+                this.xlate = {}
+                break;
+            default:
+                this.xlate = arg;        
+        }
+
+        return this.xlate;
+    },
+    
+    createQuiz: function(){
+        gs.debug('@createQuiz')
+        var self = this;
+        var grQuiz = new GlideRecord('x_0221_pubquiz_quiz');
+        grQuiz.setValue('title', self.definitions.title);
+        grQuiz.setValue('description', self.definitions.description);
+        var quizSydId = grQuiz.insert();
+
+gs.debug('roundSheets length == '+self.roundSheets.length)
+
+        self.roundSheets.forEach(function(roundSheet, index){
+            self.createRound(roundSheet, quizSydId, index);
+        })
+    },
+    
+    createRound: function(roundSheet, quizSysId, roundIndex){
+        gs.debug('@createRound')
+        gs.debug(roundSheet._name)
+
+        var grM2m = new GlideRecord('x_0221_pubquiz_quiz_round_m2m');
+        var grRound = new GlideRecord('x_0221_pubquiz_round');
+        var roundNumber = 1+roundIndex;
+
+        grRound.setValue('name', roundSheet._name || 'Round '+roundNumber);
+        var roundSysId = grRound.insert();
+
+        grM2m.setValue('quiz', quizSysId);
+        grM2m.setValue('round', roundSysId);
+        grM2m.setValue('round_nr', roundNumber);
+        grM2m.insert();
+
+        // after adding the round and linking it to the quiz, add the questions
+        // first isolate the rows needed in a new array
+        var questions = roundSheet.data.splice(this.definitions.headerRows, this.definitions.QuestionsPerRound);
+        var header = roundSheet.data.shift(); // header contains field names and is always the first entry
+
+        var self = this;
+        questions.forEach(function(question, index){
+            var questionObject = self.createObject(header, question);
+            self.createQuestion(questionObject, roundSysId, index);
+        })
+    },
+    
+    createQuestion: function(questionObject, roundSysId, questionIndex){
+        gs.debug('@createQuestion')
+        var grM2m = new GlideRecord('x_0221_pubquiz_round_question_m2m');
+        var grQuestion = new GlideRecord('x_0221_pubquiz_question');
+
+        grQuestion.setValue('question_en', questionObject['languages.en.text'])
+
+        var field;
+        for (field in questionObject){
+            grQuestion.setValue(field, questionObject[field]);
+        }
+        var questionSysId = grQuestion.insert();
+
+        grM2m.setValue('round', roundSysId);
+        grM2m.setValue('question', questionSysId);
+        grM2m.setValue('question_nr', 1+questionIndex);
+        grM2m.insert();
+    },
+    
+    processDefinitions: function(xlate){
+        gs.debug('@processDefinitions')
+        var defs = {
+            columns: []
+        };
+
+        this.definitionSheet.data.forEach(function(row, index){
+            if (index > 0){ // first row is the header row, we ignore it
+                if (row[0] === 'column'){
+                    // column names go on to the column array
+                    defs.columns.push(row[3])
+                } else {
+                    // key/value pairs
+                    defs[row[0]] = row[1]
+                }
+            }
+        });
+
+        defs.fieldsRow = defs.fieldsRow || 0;
+
+        this.definitions =  defs;
+
+        return defs;
+    },
+
+    createObject: function(header, data){
+        // creates key/value pairs w/ key from the header, value from same position in data
+        gs.debug('@createObject')
+        var result = {};
+        var xlate = this.xlate;
+        gs.debug(JSON.stringify(xlate))
+
+        header.forEach(function(fieldname, index){
+            gs.debug(fieldname+' => '+xlate[fieldname]+' = '+data[index])
+            // use the translated fieldname if present in xlate, otherwise use the fieldname as
+            result[xlate[fieldname] || fieldname] = data[index];
+        });
+
+        return result;
+    }
+}
+
+
+
+function d(){
+    return [
+{
+    "name": "QUIZ Definition",
+    "rows": 53,
+    "columns": 20,
+    "data": [
+        ["Description", "Value", "Dropdown values", "Field names", "Column width", "", "Explanation", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["title", "VWS Pub Quiz", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["description", "VWS Pub Quiz", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["QuestionsPerRound", "10", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "1"],
+        ["sheetname", "${roundNumber} - ${roundCategory}", "", "", "", "", "Use ${roundNumber} and/or ${roundCategory} - they will be parsed", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["headerRows", "3", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["language", "nl", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["column", "Q#", "", "nr", "20", "", "Question nr HAS to be the first column", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["column", "Vraag", "", "languages.nl.text", "400", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["column", "Question", "", "languages.en.text", "1", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["column", "Answer", "", "languages.nl.answer", "200", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["column", "Difficulty", "1;2;3", "difficulty", "30", "", "Use the Dropdown values column to limit possible values in this column", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["column", "Answer Label", "", "languages.nl.label", "150", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["column", "Link", "", "link", "100", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["column", "Author", "BJ;VT;KR;CR", "author", "30", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["column", "Type", "image;audio;video", "type", "80", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["column", "URL", "", "url", "50", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["column", "Drive location", "", "drive", "50", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["column", "Local", "", "local", "50", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["column", "Category", "", "category", "50", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["column", "Tags", "", "tags", "50", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["column", "Timer", "T;F", "presentation.timer", "30", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["column", "Auto transition", "T;F", "presentation.autotransition", "30", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["column", "Fullscreen", "T;F", "presentation.fullscreen", "30", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["column", "Auto start", "T;F", "presentation.autostart", "30", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["column", "Pause", "T;F", "presentation.pause", "30", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["column", "# Answers", "", "nrAnswers", "20", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["column", "LocalAnswer", "", "localAnswer", "50", "", "local location for a possible alternate picture for the answer", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["column", "Score", "", "", "", "", "completeness score of this question", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["round", "Algemeen", "", "", "", "", "Rounds are processed in the order in which they appear", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["round", "Sport & Spel", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["round", "Film & Tv", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["round", "Geschiedenis", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["round", "Aardrijkskunde", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["round", "Politiek & Maatschappij", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["round", "Kunst & Wetenschap", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["round", "Muziek", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["END", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["media type", "image, audio, video", "default", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["autotransition", "boolean", "false", "if true, slide transitions to the next after all animations have finished. typically in a music round", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["url ", "string", "", "url for media location", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["drive", "string", "", "google drive media location", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["local ", "string", "", "local path to media, e.g. R08/IAmFenwick.mp4", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["timer", "boolean", "true", "whether or not to run a timer. improvement suggestion: include timer length here", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["image only", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["fullscreen", "boolean", "false", "shows the image as background if true", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["audio/video only", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["autostart", "boolean", "false", "if true starts layback automatically", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["pause", "boolean", "false", "run the pause animation after media play", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]
+    ]
+},
+{
+    "name": "1 - Algemeen",
+    "rows": 27,
+    "columns": 24,
+    "data": [
+        ["nr", "languages.nl.text", "languages.en.text", "languages.nl.answer", "difficulty", "langauges.nl.label", "link", "author", "type", "url", "drive", "local", "category", "tags", "presentation.timer", "presentation.autotransition", "presentation.fullscreen", "presentation.autostart", "presentation.pause", "nrAnswers", "localAnswer", "category", "tags", ""],
+        ["", "Vraag", "Question", "Answer", "Difficulty", "Answer Label", "Link", "Author", "Type", "URL", "Drive location", "Local", "Category", "Tags", "Timer", "Auto transition", "Fullscreen", "Auto start", "Pause", "# Answers", "LocalAnswer", "category", "Tags", "Score"],
+        ["", "", "", "", "2.25", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["1", "In mei 2019 won Duncan Laurence het Eurovisie Songfestival. Welk land werd tweede?", "", "Italië", "2", "Land", "", "", "video", "https://i.dailymail.co.uk/1s/2019/05/19/00/13669956-7043267-image-a-33_1558221734645.jpg", "", "content\\R01\\DuncanLaurence.mp4", "", "", "F", "F", "F", "F", "F", "", "", "general", "music", "4"],
+        ["2", "Wie is deze puissant rijke dame?", "", "Mackenzie Bezos", "3", "Naam", "", "", "image", "https://static.techspot.com/images2/news/bigimage/2019/05/2019-05-28-image-19.jpg", "", "content/R01/2019-05-28-image-19.jpg", "", "", "T", "F", "F", "F", "F", "", "", "general", "celebrity", "4"],
+        ["3", "Welk bedrijf koopt jaarlijks ongeveer 25% van de wereldwijde hazelnootproductie op?", "", "Ferrero", "3", "Bedrijf", "", "", "image", "https://upload.wikimedia.org/wikipedia/commons/3/3f/Hazelnuts.jpg", "", "content/R01/Hazelnuts.jpg", "", "", "T", "F", "F", "F", "F", "", "", "general", "business", "4"],
+        ["4", "Wat is de Engelse benaming voor een grap of verborgen boodschap die onder andere voorkomt in films, computerprogramma's en games?", "", "Easter egg", "2", "Benaming", "", "", "image", "http://www.emporioae.com/wp-content/uploads/2015/04/Question-mark-scratch-head.jpg", "", "content/R01/Question-mark-scratch-head.jpg", "", "", "T", "F", "F", "F", "F", "", "", "4", "", "3"],
+        ["5", "Wat is een Jolly Roger?", "", "Piratenvlag", "2", "Bijnaam", "", "", "image", "https://akns-images.eonline.com/eol_images/Entire_Site/201962/rs_600x600-190702082724-600-Roger-Federer-GettyImages-1135007155.jpg", "", "content/R01/rs_600x600-190702082724-600-Roger-Federer-GettyImages-1135007155.jpg", "", "", "T", "F", "F", "F", "F", "", "", "general", "", "4"],
+        ["6", "Aanhangers van het pastafarisme zetten een vergiet op hun hoofd om uiting te geven aan hun religie. Hoe heet de god die bij het pastafarisme hoort?", "", "Het Vliegend Spaghettimonster", "2", "Godheid", "", "", "image", "https://sofiaglobe.com/wp-content/uploads/2013/08/Pastafari-Czech-ID.jpg", "", "content/R01/Pastafari-Czech-ID.jpg", "", "", "T", "F", "F", "F", "F", "", "", "4", "", "4"],
+        ["7", "Wat is de naam van dit parfummerk met het zwanenlogo?", "", "Gloria Vanderbilt", "2", "Parfummerk", "", "", "image", "https://www.fragrancedirect.co.uk/dw/image/v2/BBNB_PRD/on/demandware.static/-/Sites-fragrance-master-catalog/default/dw418a7e00/images/large/Gloria-Vanderbilt-Minuit-a-New-York-Eau-de-Parfum-100ml-0099246.jpg", "", "content/R01/Gloria-Vanderbilt-Minuit-a-New-York-Eau-de-Parfum-100ml-0099246.jpg", "", "", "T", "F", "F", "F", "F", "", "", "4", "business;cosmetics;logo", "4"],
+        ["8", "Wat is de meest voorkomende straatnaam in Nederland?", "", "Kerkstraat", "2", "Straat", "", "", "image", "https://upload.wikimedia.org/wikipedia/commons/4/45/20080906-07_Den_Haag_%280034%29.jpg", "", "content/R01/20080906-07_Den_Haag_(0034).jpg", "", "", "T", "F", "F", "F", "F", "", "", "general", "", "4"],
+        ["9", "Welke beroemdheid sierde in november 2018 de eerste Lindaloze cover van het blad Linda?", "", "Michelle Obama", "2", "Beroemdheid", "", "", "image", "https://www.marketingtribune.nl/media/nieuws/2018/09/mediamerk-linda.-blaast-15-kaarsjes-uit/cover-verkleind-def-(002).jpg", "", "content/R01/cover-verkleind-def-(002).jpg", "", "", "T", "F", "F", "F", "F", "", "", "general", "celebrity", "4"],
+        ["10", "Wat is het Italiaanse woord voor \"barman\"? ", "", "Barista", "1", "Italiaans woord", "", "", "image", "https://i.pinimg.com/originals/02/94/a2/0294a20077d7cae5dc40fc9f3cc41a5d.png", "", "content/R01/0294a20077d7cae5dc40fc9f3cc41a5d.png", "", "", "T", "F", "F", "F", "F", "", "", "general", "language", "4"],
+        ["R", "De twee kranten die wereldwijd de hoogste oplage kennen worden gedrukt in hetzelfde land. Welk land?", "", "Japan", "3", "Land", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R", "In 1971 is het logo van Nike ontworpen door de studente Carolyn Davidson. Voor dit briljante logo heeft ze maar liefst 35 dollar gekregen. Wat is de naam van dit logo?", "", "Swoosh", "2", "Logo", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R", "De kat Choupette speelt een belangrijke rol in de afwikkeling van de erfenis van welke beroemdheid?", "", "Karl Lagerfeld", "2", "Beroemdheid", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R", "In 1667 ruilden de Nederlanders Manhattan met de Engelsen tegen het onbeduidend kleine eilandje Run in de Molukken, omdat op dat eiland toen 's werelds duurste specerij werd verbouwd. De specerij, die als vrucht aan een boom groeit, wordt vooral in aardappel- en koolgerechten, soepen en vleesproducten gebruikt. Het vruchtvlies wordt gedroogd verkocht als foelie. Uit het geeloranje vruchtvlees worden gelei, boter en siroop gekookt. Om welke specerij gaat het?", "", "Nootmuskaat", "3", "Specerij", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R", "In bepaalde gebieden rond Brussel respecteren de brouwers nog de traditionele werkwijze en de spontane vergisting. Hoe noemen we dit bier dat tegenwoordig voornamelijk als grondstof voor bieren die gezoet of hergist worden op de fles.", "", "Lambiek", "3", "Bier", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R", "Wat is de Franse term voor een kruidentuiltje waarbij meestal enkele blaadjes tijm, lauriertakjes en peterseliestengels samen worden gebonden, ook andere kruiden kunnen worden meegebonde? Dit tuiltje laat je dan meekoken in een soep, saus of gerecht.", "", "Bouquet Garni", "2", "Kruidentuiltje", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R", "Bij wiens auto hoort deze nummerplaat?", "", "Paus", "1", "Nummerplaat", "", "", "", "https://upload.wikimedia.org/wikipedia/commons/a/ab/Targa_automobilistica_Citt%C3%A0_del_Vaticano_2002_SCV_1_Papamobile.jpg", "", "content/R01/Targa_automobilistica_CittÃ _del_Vaticano_2002_SCV_1_Papamobile.jpg", "", "", "", "", "", "", "", "", "", "", "", "4"],
+        ["R", "De foutmelding Not Found is de HTTP-statuscode als een gevraagd bestand niet wordt gevonden of niet bestaat. De foutmelding krijgt meestal ook een getal met drie cijfers, welke?", "", "404", "2", "Code", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["", "Wie is deze wetenschapper / presentator? ", "", "Neil Degrasse Tyson", "3", "Naam", "", "", "image", "https://cdn2.atlantamagazine.com/wp-content/uploads/sites/12/2017/05/0617_NeilDegrasseTyson_Gluekit_oneuseonly.jpg", "", "content/R01/0617_NeilDegrasseTyson_Gluekit_oneuseonly.jpg", "", "", "T", "F", "F", "F", "F", "", "", "", "", "4"],
+        ["", "Ter gelegenheid van het WK Voetbal voor vrouwen eerder dit jaar had Jan Smit een hit met 'Wij zijn Nederland'. Wat zijn de eerste vier woorden van de tekst?", "", "Wij zijn de jongens", "3", "Tekst", "", "", "image", "", "", "", "", "", "T", "F", "F", "F", "F", "", "", "", "", "3"],
+        ["", "Wie is dit beroemde echtpaar?", "", "Nicole Kidman, Keith Urban", "2", "Namen", "", "", "image", "https://rdcnewscdn.realtor.com/wp-content/uploads/2018/11/Nicole-Kidman-and-Keith-Urban-1024x576.jpg", "", "content/R01/Nicole-Kidman-and-Keith-Urban-1024x576.jpg", "", "", "T", "F", "F", "F", "F", "", "", "", "", "4"],
+        ["", "Welke Nederlandse restaurantketen deelt zijn naam met een Franse wiskundige? ", "", "Laplace ", "3", "Naam ", "", "", "image", "", "", "", "", "", "T", "F", "F", "F", "F", "", "", "", "", "3"],
+        ["", "Wat is de naam van het Franse modehuis dat luxeproducten als de Birkin-tas, het parfum Terre en het carré sjaaltje op de markt brengt?", "", "Hermès", "2", "Modehuis", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["", "Ze heten ook wel Yeomen Warders. Maar wat is de meer gebruikte bijnaam die voor de bewakers van de Tower of London wordt toegepast?", "", "Beefeaters", "1", "Naam", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"]
+    ]
+},
+{
+    "name": "2 - Sport & Spel",
+    "rows": 21,
+    "columns": 22,
+    "data": [
+        ["nr", "languages.nl.text", "languages.en.text", "languages.nl.answer", "difficulty", "langauges.nl.label", "link", "author", "type", "url", "drive", "local", "category", "tags", "presentation.timer", "presentation.autotransition", "presentation.fullscreen", "presentation.autostart", "presentation.pause", "nrAnswers", "localAnswer", ""],
+        ["Q#", "Vraag", "Question", "Answer", "Difficulty", "Answer Label", "Link", "Author", "Type", "URL", "Drive location", "Local", "Category", "Tags", "Timer", "Auto transition", "Fullscreen", "Auto start", "Pause", "# Answers", "LocalAnswer", "Score"],
+        ["", "", "", "", "1.9", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["1", "Het individuele WK motorcross wordt sinds 1957 gehouden. Welk land leverde de meeste wereldkampioenen af? Meer nog dan de nummers 2, 3 en 4 op die lijst tezamen.", "", "België", "2", "Land", "", "", "image", "https://upload.wikimedia.org/wikipedia/commons/4/43/EMX_Open_rajt_Kiskunlach%C3%A1za_2017.jpg", "", "content/R02/motox.jpg", "Sport", "", "", "", "", "", "", "", "", "4"],
+        ["2", "Kiki Bertens slaagde er afgelopen jaar zich in de top 10 van de WTA-ranglijst te spelen. Twee Nederlandse vrouwen deden dat haar voor. Welke?", "", "Betty Stöve, Brenda Schultz", "2", "Tennisters", "", "", "image", "http://www1.pictures.zimbio.com/gi/2016+French+Open+Day+Three+SFkVvnPPiV8x.jpg", "", "content/R02/2016+French+Open+Day+Three+SFkVvnPPiV8x.jpg", "Sport", "", "T", "F", "F", "F", "F", "", "", "4"],
+        ["3", "Wat is de soortnaam die meestal gebruikt wordt voor de ijsdweilmachine bij schaatssporten en die vernoemd is naar de uitvinder?", "", "Zamboni", "2", "Dweilmachine", "", "", "image", "https://i.cbc.ca/1.4281159.1504892198!/fileImage/httpImage/image.jpg_gen/derivatives/16x9_1180/dartmouth-rink.jpg", "", "content/R02/dartmouth-rink.jpg", "Sport", "", "T", "F", "F", "F", "F", "", "", "4"],
+        ["4", "The Old Firm is een voetbalklassieker tussen welke twee ploegen?", "", "Glasgow Rangers en Celtic", "2", "Voetbalploegen", "", "", "image", "http://1.bp.blogspot.com/-T7u2478zum4/UYEG2w0YeYI/AAAAAAAADiM/ScpSEplzChA/s1600/kdwcpg.jpg", "", "content/R02/kdwcpg.jpg", "Sport", "", "", "", "", "", "", "2", "", "4"],
+        ["5", "Welke club staat sinds 1998 onafgebroken in de finale van de play-offs van de hoofdklasse bij het dameshockey? ", "", "Den Bosch", "1", "Hockeyclub", "", "", "image", "https://1.bp.blogspot.com/-cqXH2F7Bemg/TfkSVyyz8gI/AAAAAAAAAM8/9Jd1efBuleE/s640/leicester_den_bosch_hockey_finale_eccc_dbfoto_groepsfoto.jpg", "", "content/R02/leicester_den_bosch_hockey_finale_eccc_dbfoto_groepsfoto.jpg", "Sport", "", "", "", "", "", "", "", "", "4"],
+        ["6", "Anky van Grunsven won met twee paarden Olympisch Goud. Noem ze voor een punt per stuk.", "", "Salinero, Bonfire", "2", "Paarden", "", "", "image", "https://www.outdoorgelderland.nl/wp-content/uploads/2018/05/Anky-1024x681.jpg", "", "content/R02/Anky-1024x681.jpg", "Sport", "", "T", "F", "F", "F", "F", "2", "", "4"],
+        ["7", "Voor het eerst in 30 jaar mocht een Nederlandse wielrenner dit jaar weer eens het geel aantrekken. Welke renner was dit?", "", "Mike Teunissen", "1", "Wielrenner", "", "", "video", "https://www.abc.net.au/news/image/11286120-16x9-700x394.jpg", "", "content\\R02\\Mike Teunnissen.mp4", "Sport", "", "F", "F", "F", "F", "F", "", "", "4"],
+        ["8", "Welke titel krijgt de beste kaatser op de jaarlijkse PC in Franeker?", "", "Koning", "2", "Titel", "", "", "image", "https://www.franekeractueel.frl/nieuws/wp-content/uploads/2019/07/93-%C2%A9-FranekerActueel.nl_-1-960x640.jpg", "", "content/R02/PCKoning.jpg", "Sport", "", "T", "F", "F", "F", "F", "", "", "4"],
+        ["9", "Wie is de huidige wereldkampioen snooker?", "", "Judd Trump", "3", "Snookerspeler", "", "", "image", "https://cdn-01.independent.ie/incoming/article38085756.ece/5974b/AUTOCROP/w620/judd.jpg", "", "content/R02/judd.jpg", "Sport", "", "T", "F", "F", "F", "F", "", "", "4"],
+        ["10", "Wat is de naam van de Amerikaanse voetbalster die op het afgelopen WK voor vrouwen werd uitgeroepen tot beste speelster van het toernooi?", "", "Megan Rapinoe", "2", "Voetbalster", "", "", "image", "https://upload.wikimedia.org/wikipedia/commons/7/7b/Megan_Rapinoe_%2837241322131%29_%28cropped%29.jpg", "", "content/R02/Megan_Rapinoe_(37241322131)_(cropped).jpg", "Sport", "", "T", "F", "F", "F", "F", "", "", "4"],
+        ["R", "Bij de Olympische Spelen van 1924 kreeg het Nederlands voetbalelftal een knuffeldier mee als mascotte. Deze werd tegen de paal aangelegd en Oranje won direct met 6-0 van Roemenië. Er werd besloten dat het knuffeldier iedere wedstrijd tegen de paal moest worden gelegd, maar niemand durfde met een knuffel het veld op te lopen, waardoor dit een taak van de debutant werd. Tegenwoordig krijgen debutanten van Oranje een speld met dit dier. Om wat voor dier gaat het?", "", "Haasje", "2", "Dier", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R", " 'The Auld Mug' is een zeilwedstrijd die voor het eerst in 1851 werd gehouden en wordt daardoor beschouwd als het oudste internationale sportevenement. Onder welke naam is de wedstrijd beter bekend?\n", "", "The Americas Cup", "2", "Zeilwedstrijd", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R", "Wat is de naam van de controversiële Olympisch kampioene op de 800 meter uit Zuid Afrika, die wegens een te hoog testosteronniveau medicijnen moet slikken om mee te mogen doen aan wedstrijden?", "", "Caster Semanya", "2", "Atlete", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R", "Wat is het Formule 1-circuit dat het vaakst sinds de start van het WK in 1950 werd aangedaan? Het ontbrak slechts een keer op de kalender in 1980.", "", "Monza", "2", "Circuit", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["R", "Dit paardenrace-evenement dat jaarlijks plaatsvindt in een plaats in het Engelse graafschap Berkshire is het beroemdste van de wereld. De aandacht van de pers gaat echter meer uit naar de kleding (met name de hoeden) dan naar de races. Hoe heet het?", "", "Ascot", "2", "Evenement", "", "", "image", "", "", "", "", "", "T", "F", "F", "F", "F", "", "", "3"],
+        ["R", "Op het WK voetbal in 2018 kwam wereldkampioen Frankrijk maar tegen één tegenstander op achterstand. Tegen wie?", "", "Argentinië", "2", "Land", "", "", "image", "", "", "", "", "", "T", "F", "F", "F", "F", "", "", "3"],
+        ["R", "Wie is deze Franse gevechtspiloot en oorlogsheld.", "", "Roland Garros", "3", "Oorlogsheld", "", "", "image", "https://upload.wikimedia.org/wikipedia/commons/9/9b/Roland_Garros_1910.jpg", "", "content/R02/Roland_Garros_1910.jpg", "", "", "T", "F", "F", "F", "F", "", "", "4"],
+        ["R", "De Formule 1 kent twee vader/zoon-duo's die ooit wereldkampioen werden. Noem de twee familienamen.", "", "Hill, Rosberg", "3", "Familienamen", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"]
+    ]
+},
+{
+    "name": "3 - Film & TV & Radio",
+    "rows": 27,
+    "columns": 22,
+    "data": [
+        ["nr", "languages.nl.text", "languages.en.text", "languages.nl.answer", "difficulty", "langauges.nl.label", "link", "author", "type", "url", "drive", "local", "category", "tags", "presentation.timer", "presentation.autotransition", "presentation.fullscreen", "presentation.autostart", "presentation.pause", "nrAnswers", "localAnswer", ""],
+        ["Q#", "Vraag", "Question", "Answer", "Difficulty", "Answer Label", "Link", "Author", "Type", "URL", "Drive location", "Local", "Category", "Tags", "Timer", "Auto transition", "Fullscreen", "Auto start", "Pause", "# Answers", "LocalAnswer", "Score"],
+        ["", "", "", "", "2.11", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["1", "Hoe heet de Engelse badplaats waar het hotel uit Fawlty Towers staat?", "", "Torquay ", "3", "Stad", "", "", "image", "https://upload.wikimedia.org/wikipedia/en/d/d6/Fawlty_Towers_title_card.jpg", "", "content/R03/Fawlty_Towers_title_card.jpg", "Film/TV", "tv", "T", "F", "F", "F", "F", "", "", "4"],
+        ["2", "Welke acteur zien we hier in de rol van Mark Hanna in de film The Wolf of Wall Street de Money Chant doen?", "", "Matthew McConaughey", "2", "Acteur", "https://www.youtube.com/watch?v=02_atwmhNSk, 0:29 - 1:18", "", "video", "", "", "content\\R03\\Wolf of Wallstreet - Money chant (online-video-cutter.com).mp4", "Film/TV", "film", "F", "F", "F", "F", "F", "", "", "3"],
+        ["3", "Wat is de voornaam van deze Australische kapsaloneigenaresse die in haar reality-serie niet-succesvolle kapsalons probeert te helpen?", "", "Tabatha", "2", "Voornaam", "", "", "image", "https://upload.wikimedia.org/wikipedia/commons/8/82/Tabatha_Coffey_2012.jpg", "", "content/R03/Tabatha_Coffey_2012.jpg", "Film/TV", "tv, reality", "T", "F", "F", "F", "F", "", "", "4"],
+        ["4", "Uit welke film met Marilyn Monroe komt dit iconisch beeld?", "", "The Seven Year Itch", "3", "Film", "", "", "image", "http://1000thingsnyc.com/wp-content/uploads/2013/06/Marilyn.jpg", "", "content/R03/Marilyn.jpg", "Film/TV", "film", "T", "F", "F", "F", "F", "", "", "4"],
+        ["5", "Hoe heet de Netflixfilm uit 2018 met onder andere Sandra Bullock. Een van de onderwerpen uit de film leidde tot een internethype waarbij mensen geblinddoekt alledaagse acitiviteiten doen.", "", "Bird Box", "2", "Film", "", "", "image", "https://www.rtlnieuws.nl/sites/default/files/styles/liggend/public/content/images/2018/12/27/BIRD_BOX_015-2.jpg", "", "content/R03/BIRD_BOX_015-2.jpg", "Film/TV", "tv", "", "", "", "", "", "", "", "4"],
+        ["6", "Avatar werd dit jaar van de troon gestoten als de film met de grootste opbrengst aller tijden. Door welke film?", "", "Avengers: Endgame", "1", "Film", "", "", "image", "https://upload.wikimedia.org/wikipedia/en/3/38/Avatarjakeneytiri.jpg", "", "content/R03/Avatarjakeneytiri.jpg", "Film/TV", "film", "", "", "", "", "", "", "", "4"],
+        ["7", "Met welk radioprogramma afficheer je deze tune?", "", "Radio Tour de France", "2", "Radioprogramma", "https://www.youtube.com/watch?v=ISaKXYmWfYU", "", "audio", "", "", "content\\R03\\Rein van den Broek - Tarantuella (mp3cut.net).mp3", "Film/TV", "radio", "", "", "", "", "", "", "", "3"],
+        ["8", "Welke actrice speelde de rol van Rachel Zane in de TV-serie Suits?", "", "Meghan Markle", "2", "Actrice", "", "", "image", "http://i.ytimg.com/vi/wW0o7Qr9imQ/maxresdefault.jpg", "", "content/R03/maxresdefault.jpg", "Film/TV", "tv", "", "", "", "", "", "", "", "4"],
+        ["9", "Wat is de naam van de basisschool in De Luizenmoeder?", "", "De Klimop", "2", "School", "", "", "image", "https://www.aroundseven.nl/wp-content/uploads/2018/02/juf-ank.jpg", "", "content/R03/juf-ank.jpg", "Film/TV", "tv", "T", "F", "F", "F", "F", "", "", "4"],
+        ["10", "Voor welke film ontving Sean Connery zijn enige Oscar?", "", "The Untouchables", "3", "Film", "", "", "image", "https://upload.wikimedia.org/wikipedia/commons/5/5f/Sean_Connery_plaque%2C_Fountainbridge_Edinburgh.jpg", "", "content/R03/Sean_Connery_plaque,_Fountainbridge_Edinburgh.jpg", "Film/TV", "film", "T", "F", "F", "F", "F", "", "", "4"],
+        ["R", "Wat is de titel van de film over middeleeuws Europa die Paul Verhoeven midden jaren '80 draaide? Het was de eerste engelstalige film van Verhoeven en tevens de laatste keer dat Paul Verhoeven en Rutger Hauer samenwerkten?", "", "Flesh and Blood", "2", "Film", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R", "Bij welke TV-serie hoort deze introsong?", "", "Dad's Army", "2", "TV-serie", "", "", "", "https://www.youtube.com/watch?v=fkP-T6UYKOg", "", "content/R02/watch", "", "", "", "", "", "", "", "", "", "4"],
+        ["R", "Hoe heette de eerste commerciële Nederlandstalige televisiezender die vanaf oktober 1989 in Nederland uitzond?", "", "RTL Véronique", "2", "Zender", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R", "Wie werd bekend in haar rol als Hannah Montana in de gelijknamige serie op Disney Channel?", "", "Miley Cyrus", "2", "Actrice", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R", "Claudia de Breij bracht in 2016 als eerste vrouw wat op tv?", "", "Oudejaarsconference", "1", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["R", "Wie is naast Walt Disney de enige persoon die in zes Oscarcategorieen werd genomineerd? Hij won een Oscar als producent voor Argo, hij regisseerde onder andere The Monuments Men en speelde in films als Michael Clayton en Syriana.", "", "George Clooney", "3", "Persoon", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R", "Wat is de oudste tv-prijs van Nederland? De prijs wordt jaarlijks uitgereikt sinds 1961 om de kwaliteit in radio- en televisieprogramma's te bevorderen. Dit jaar werd deze gewonnen door Jeroen Pauw. ", "", "Nipkowschijf", "2", "TV-prijs", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["R", "Wat is de naam van de Amerikaanse documentaire uit 2019 waarin Wade Robson en James Safechuck naar eigen zeggen verklaren dat ze in 1993 door de wereldberoemde popartiest Michael Jackson op zijn landgoed Neverland Ranch zouden zijn misbruikt?", "", "Leaving Neverland", "2", "Leaving Neverland", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R", "In de film La dolce vita van Federico Fellini gedroeg zich een man zeer opdringerig bij het fotograferen van mensen op straat. Wat is zijn achternaam in deze film?", "", "Paparazzo", "3", "Achternaam", "", "", "", "https://upload.wikimedia.org/wikipedia/commons/2/22/Bundesarchiv_Bild_183-1984-0822-503%2C_Fotograf_mit_Kamera_in_Wassertonne.jpg", "", "content/R03/Bundesarchiv_Bild_183-1984-0822-503,_Fotograf_mit_Kamera_in_Wassertonne.jpg", "", "", "", "", "", "", "", "", "", "4"],
+        ["R", "Hoe heet de camping uit de Netflixserie Undercover?", "", "Zonnedauw", "3", "Camping", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["", "In welke film komt een winkelcentrum voor met de namen \"Lone Pine Mall\" en \"Twin Pines Mall\"?", "", "Back to the future", "3", "Film", "https://backtothefuture.fandom.com/wiki/Twin_Pines_Mall", "", "image", "", "", "", "", "", "T", "F", "F", "F", "F", "", "", "3"],
+        ["", "Wat is de naam van de Netflixserie over een groep vrienden die in de jaren '80 zowel met mysterieuze monsters als hun eigen puberteit te maken krijgen. Met 41 miljoen accounts is het derde seizoen van de serie populairder dan welke reeks of film op Netflix ooit.", "", "Stranger Things", "1", "TV-serie", "", "", "image", "", "", "", "", "", "T", "F", "F", "F", "F", "", "", "3"],
+        ["", "Op 30 april van dit jaar overleed Peter Mayhew. Deze 2.21 meter lange acteur werd vooral bekend vanwege een rol in een legendarische filmreeks. Wele rol was dat?", "", "Chewbacca", "2", "Rol", "", "", "image", "", "", "", "", "", "T", "F", "F", "F", "F", "", "", "3"],
+        ["", "In welke plaats staat deze snackbar?", "", "Maaskantje", "1", "Plaats", "", "", "", "https://upload.wikimedia.org/wikipedia/commons/a/af/Maaskantje_-_Cafetaria_%27t_Pleintje.jpg", "", "content/R05/Maaskantje_-_Cafetaria_'t_Pleintje.jpg", "", "", "", "", "", "", "", "", "", "4"]
+    ]
+},
+{
+    "name": "4 - Geschiedenis",
+    "rows": 20,
+    "columns": 22,
+    "data": [
+        ["nr", "languages.nl.text", "languages.en.text", "languages.nl.answer", "difficulty", "langauges.nl.label", "link", "author", "type", "url", "drive", "local", "category", "tags", "presentation.timer", "presentation.autotransition", "presentation.fullscreen", "presentation.autostart", "presentation.pause", "nrAnswers", "localAnswer", ""],
+        ["Q#", "Vraag", "Question", "Answer", "Difficulty", "Answer Label", "Link", "Author", "Type", "URL", "Drive location", "Local", "Category", "Tags", "Timer", "Auto transition", "Fullscreen", "Auto start", "Pause", "# Answers", "LocalAnswer", "Score"],
+        ["", "", "", "", "2.1", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["1", "In 1994 werden tien Belgische paracommando's door rebellen vermoord tijdens een VN-missie. In welk land vond deze gebeurtenis plaats?", "", "Rwanda", "2", "Land", "", "", "image", "https://upload.wikimedia.org/wikipedia/commons/2/2f/UNAMIR_Blue_Berets_memorial_Kigali_%281%29.jpg", "", "content/R04/UNAMIR_Blue_Berets_memorial_Kigali_(1).jpg", "History", "", "T", "F", "F", "F", "F", "", "", "4"],
+        ["2", "In welke stad zijn bijna alle Franse vorsten gekroond?", "", "Reims", "2", "Stad", "", "", "image", "https://upload.wikimedia.org/wikipedia/commons/e/e1/Reims_Kathedrale.jpg", "", "content/R04/Reims_Kathedrale.jpg", "History", "", "T", "F", "F", "F", "F", "", "", "4"],
+        ["3", "In het midden zie je de geboeide Lee Harvey Oswald, de moordenaar van president Kennedy. Maar wie schoot Oswald neer toen hij twee dagen na de moord werd buitengeleid uit een politiekantoor in Dallas?", "", "Jack Ruby", "2", "Moordenaar", "", "", "video", "https://upload.wikimedia.org/wikipedia/commons/3/32/Lee_Harvey_Oswald_being_shot_by_Jack_Ruby_as_Oswald_is_being_moved_by_police%2C_1963.jpg", "", "content\\R04\\Lee Harvey Oswald shot by Jack Ruby.mp4", "History", "", "F", "F", "F", "F", "F", "", "", "4"],
+        ["4", "In de periode vlak na Tweede Wereldoorlog werd wraak genomen op Nederlanders die \"fout\" waren geweest. Met welke, oorspronkelijk uit de scheepvaart afkomstige term wordt deze periode aangeduid?", "", "Bijltjesdag", "1", "Naam", "", "", "image", "https://upload.wikimedia.org/wikipedia/commons/f/f4/Kaalgeschoren_moffenmeiden.jpg", "", "content/R04/Kaalgeschoren_moffenmeiden.jpg", "History", "", "T", "F", "F", "F", "F", "", "", "4"],
+        ["5", "Wat is de term voor de Franse protestanten die met name na de Bartholomeusnacht in 1572 vluchtten naar andere Europese landen?", "", "Hugenoten", "2", "Groepsnaam", "", "", "image", "https://upload.wikimedia.org/wikipedia/commons/5/52/Francois_Dubois_001.jpg", "", "content/R04/Francois_Dubois_001.jpg", "History", "", "T", "F", "F", "F", "F", "", "", "4"],
+        ["6", "Wat is de oudste nog bestaande republiek ter wereld? Het is tevens het land met de oudste grondwet.", "", "San Marino", "3", "Republiek", "", "", "image", "https://file.mahalo.cz/2015/11/San-Marino.jpg", "", "content/R04/San-Marino.jpg", "History", "", "T", "F", "F", "F", "F", "", "", "4"],
+        ["7", "Wat is de naam van de veerboot dat in 1994 tussen Stockholm en Tallinn zonk. De ramp zorgde voor 852 slachtoffers, nog steeds de grootste naoorlogse scheepsramp in Europa.", "", "Estonia", "3", "Schip", "", "", "image", "https://upload.wikimedia.org/wikipedia/commons/a/a4/MSEstonia4.jpg", "", "content/R04/MSEstonia4.jpg", "History", "", "T", "F", "F", "F", "F", "", "", "4"],
+        ["8", "In 1946 werd een kledingstuk op de markt gebracht. De Franse ontwerper verwachte dat het zou inslaan als een bom, en vermoemde het dan ook naar het atol waar de Amerikanen atoomproeven deden. Wat is de naam van dat atol? ", "", "Bikini", "2", "Kledingstuk", "", "", "image", "https://upload.wikimedia.org/wikipedia/commons/0/09/Operation_Crossroads_Baker_Edit.jpg", "", "content/R04/Operation_Crossroads_Baker_Edit.jpg", "History", "", "T", "F", "F", "F", "F", "", "", "4"],
+        ["9", "Wat is de naam van de Engelse ontdekkingsreiziger die als eerste persoon dwars van het westen naar het oosten van Afrika trok?", "", "David Livingstone", "2", "Ontdekkingsreiziger", "", "", "image", "https://upload.wikimedia.org/wikipedia/commons/2/21/David_Livingstone_-1.jpg", "", "content/R04/David_Livingstone_-1.jpg", "History", "", "", "", "", "", "", "", "", "4"],
+        ["10", "Wie is de oudst bekende Atheense wetgever? Hij leefde rond 620 voor Christus. Hij zou in zijn wetten zeer streng zijn geweest en zijn naam leeft om die reden nog steeds voort.", "", "Draco", "2", "Wetgever", "", "", "image", "http://stevetilford.com/wp-content/uploads/2012/12/draco.jpg", "", "content/R04/draco.jpg", "History", "", "", "", "", "", "", "", "", "4"],
+        ["R", "Welke term werd gegeven aan het Nederlandse protest tegen de plaatsing van kruisraketten in de jaren '80? ", "", "Hollanditis", "2", "Term", "", "", "", "https://nl.wikipedia.org/wiki/Hollanditis#/media/Bestand:Peace_demonstration_1983.jpg", "", "content/R04/Bestand:Peace_demonstration_1983.jpg", "", "", "", "", "", "", "", "", "", "4"],
+        ["R", "Bij welke gebeurtenis in Nederland werd het inmiddels beroemde parkeerverkeersbord met een blauw vierkant en witte P geïntroduceerd, dat later als internationale standaard zou worden gebruikt?", "", "Olympische Spelen van Amsterdam 1928", "3", "Gebeurtenis", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R", "Welke Spartaanse legeraanvoerder voerde volgens de overlevering bij Thermopylae in 480 voor Christus een oorlogje met driehonderd Griekse soldaten tegen een strijdmacht van één miljoen Perzen. Het overkwam onze Spartaanse koning bij de slag van Thermopylae in 480 v. Chr. Welke Spartaanse koning vocht dapper maar stierf uiteindelijk tijdens de tweede Perzische oorlog", "", "Leonidas", "2", "Legeraanvoerder", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R", "Onder welke naam kennen we de zware epidemie die Europa na WO 1 trof. De dodelijke slachtoffers die het virus eiste overstijgt ruimschoots de dodelijke slachtoffers van WO 1 zelf.", "", "Spaanse Griep", "2", "Spaanse Griep", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R", "Bij welke Spaanse plaats vond in 1805 tijdens de Derde Coalitieoorlog tussen het Verenigd Koninkrijk en het Franse keizerrijk van Napoleon de belangrijkste zeeslag plaats? Deze overwinning van de Britten had gevolgen tot ver in de twintigste eeuw", "", "Trafalgar", "2", "Zeeslag", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["", "Hoe heet het plein in Kiev waarop in 2013 de protesten tegen zittend premier Janoekovitsj starten? ", "", "Maidan", "2", "Plein", "", "", "image", "", "", "", "", "", "T", "F", "F", "F", "F", "", "", "3"],
+        ["", "Wat is de naam van de koningin die aan de zijde van farao Achnaton heerste aan het begin van het Nieuwe Rijk zo'n 1300 jaar voor het begin van onze jaartelling, ", "", "Nefertiti", "2", "Koningin", "", "", "image", "https://upload.wikimedia.org/wikipedia/commons/1/1f/Nofretete_Neues_Museum.jpg", "", "content/R04/Nofretete_Neues_Museum.jpg", "", "", "T", "F", "F", "F", "F", "", "", "4"]
+    ]
+},
+{
+    "name": "5 - Aardrijkskunde",
+    "rows": 24,
+    "columns": 22,
+    "data": [
+        ["nr", "languages.nl.text", "languages.en.text", "languages.nl.answer", "difficulty", "langauges.nl.label", "link", "author", "type", "url", "drive", "local", "category", "tags", "presentation.timer", "presentation.autotransition", "presentation.fullscreen", "presentation.autostart", "presentation.pause", "nrAnswers", "localAnswer", ""],
+        ["Q#", "Vraag", "Question", "Answer", "Difficulty", "Answer Label", "Link", "Author", "Type", "URL", "Drive location", "Local", "Category", "Tags", "Timer", "Auto transition", "Fullscreen", "Auto start", "Pause", "# Answers", "LocalAnswer", "Score"],
+        ["", "", "", "", "2.2", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["1", "Wat is het enige land van de EU dat geografisch tot Azië behoort?", "", "Cyprus", "2", "Land", "", "", "image", "https://geekireland.com/wp-content/uploads/2018/09/EU-Flag-Streaming-Quotas.jpg", "", "content/R05/EU-Flag-Streaming-Quotas.jpg", "Geography", "", "T", "F", "F", "F", "F", "", "", "4"],
+        ["2", "De hoofdstad Rabat is een van de koningssteden van Marokko. Wat zijn de andere drie?", "", "Meknes, Fes, Marrakesh", "3", "Koningssteden", "", "", "image", "https://upload.wikimedia.org/wikipedia/commons/6/6e/Rabat_Mausole_MohammedV.jpg", "", "content/R05/Rabat_Mausole_MohammedV.jpg", "Geography", "", "T", "F", "F", "F", "F", "3", "", "4"],
+        ["3", "Van welke Amerikaanse stad betekent de naam letterlijk "de weiden"?", "", "Las Vegas", "1", "Stad", "", "", "image", "http://noordhollandshof.nl/wp-content/uploads/2017/09/koeien-in-wei-2017.jpg", "", "content/R05/koeien-in-wei-2017.jpg", "Geography", "", "T", "F", "F", "F", "F", "", "", "4"],
+        ["4", "Wat is het zuidelijkst gelegen punt van de eilandenarchipel Vuurland? De naam is bedacht door ontdekkingsreiziger Ferdinand Magelhaes.", "", "Kaap Hoorn", "2", "Naam", "", "", "image", "https://upload.wikimedia.org/wikipedia/commons/2/2f/Almirante_Benavente_en_isla_Hornos.jpg", "", "content/R05/Almirante_Benavente_en_isla_Hornos.jpg", "Geography", "", "T", "F", "F", "F", "F", "", "", "4"],
+        ["5", "De bewoners van welk Europees land zijn de enigen die twee grenzen moeten passeren om de zee te bereiken?", "", "Liechtenstein", "3", "Land", "", "", "image", "https://upload.wikimedia.org/wikipedia/commons/7/7b/Bordje_rijksgrens.JPG", "", "content/R05/Bordje_rijksgrens.JPG", "Geography", "", "T", "F", "F", "F", "F", "", "", "4"],
+        ["6", "Wat is de noordelijkst gelegen gemeente van Nederland?", "", "Schiermonnikoog", "2", "Gemeente", "", "", "image", "http://www.lauriekarine.nl/wp-content/uploads/Schiermonnikoog-fotografie-Toeractief-6-van-10.jpg", "", "content/R05/Schiermonnikoog-fotografie-Toeractief-6-van-10.jpg", "Geography", "", "T", "F", "F", "F", "F", "", "", "4"],
+        ["7", "Hoe heet het van oorsprong Tibetaanse volk dat tegenwoordig in Nepal woont en vooral bekend is vanwege het feit dat zij bij bergexpedities veel hand en spandiensten verlenen?", "", "Sherpa's", "2", "Volk", "", "", "image", "https://upload.wikimedia.org/wikipedia/commons/1/10/Sherpa.jpg", "", "content/R05/Sherpa.jpg", "Geography", "", "T", "F", "F", "F", "F", "", "", "4"],
+        ["8", "101 Dalmatiërs is een bekende Disneyfilm. In welk Europees land vinden we de streek Dalmatië?", "", "Kroatië", "2", "Land", "", "", "image", "https://amp.insider.com/images/5c11046aa9054804ed7ff4c3-750-563.jpg", "", "content/R05/5c11046aa9054804ed7ff4c3-750-563.jpg", "Geography", "", "T", "F", "F", "F", "F", "", "", "4"],
+        ["9", "De langste rivier die volledig in Nederland stroomt start in het Gelderse Doornenburg en mondt uit in de Merwede bij Gorinchem. Welke rivier is dit?", "", "Linge", "3", "Rivier", "", "", "image", "https://upload.wikimedia.org/wikipedia/commons/f/f4/Beesd_002.jpg", "", "content/R05/Beesd_002.jpg", "Geography", "", "T", "F", "F", "F", "F", "", "", "4"],
+        ["10", "Er zijn twee landenvlaggen die getooid zijn met een draak. Een ervan is de vlag van Bhutan hiernaast. Wat is het andere land?", "", "Wales", "2", "Land", "", "", "image", "https://www.free-largeimages.com/wp-content/uploads/2014/11/Bhutan_flag-7.jpg", "", "content/R05/Bhutan_flag-7.jpg", "Geography", "", "T", "F", "F", "F", "F", "", "", "4"],
+        ["R", "Wat is de overeenkomst tussen het hoogste punt van Drenthe bij Wijster en het hoogste punt van Noord Brabant op het Landgoed Gulbergen?", "", "Het zijn allebei voormalige vuilnisbelten", "3", "Overeenkomsten", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R", "We zien hier de grootste stad van Afrika met 21 mln inwoners en de snelst groeiende metropool van dat continent. De stad wordt bediend door Murtalla Muhammed International Airport.", "", "Lagos", "2", "Hoofdstad", "", "", "", "https://upload.wikimedia.org/wikipedia/commons/c/ca/Lagos_Island.jpg", "", "content/R05/Lagos_Island.jpg", "", "", "", "", "", "", "", "", "", "4"],
+        ["R", "Wat is de enige Nederlandse gemeente die de afgelopen 200 jaar tot drie verschillende provincies behoorde?", "", "Urk", "2", "Gemeente", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["R", "Welke Nederlandse stad zien jullie hier?", "", "Groningen", "2", "Stad", "", "", "", "https://upload.wikimedia.org/wikipedia/commons/8/86/Panorama_Grote_Markt_Groningen.JPG", "", "content/R05/Panorama_Grote_Markt_Groningen.JPG", "", "", "", "", "", "", "", "", "", "4"],
+        ["R", "Wat is de term die in de geografie gebruikt wordt voor de hoeveelheid water die een rivier of beek per tijdseenheid transporteert of afvoert? ", "", "Debiet", "2", "Term", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R", "Wat was tot 1931 de naam van Thailand. De naam leeft zelfs nog altijd voort in een aantal bij ons gekende begrippen.", "", "Siam", "2", "Naam", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R", "Welke 2 landen worden met elkaar verbonden door de Khyberpas? Het hoogste punt ligt op 1070 meter. De pas is door de eeuwen heen een belangrijke handelsroute evenals een strategische militaire locatie", "", "Pakistan en India", "2", "Landen", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R", "Hoe heet het nomadisch volk dat het Noord-Europese Lapland bewoont. Ze zijn ook bekend onder de naam Lappen, wat ze zelf als een belediging beschouwen. ", "", "Sami", "2", "Volk", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R ", "De republiek Taiwan kreeg pas aan het eind van WO II zijn naam. Het eiland kende een lange en bewogen geschiedenis en had daarvoor een Portugese naam. Welke?", "", "Formosa", "3", "Naam", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["", "Welk continent bevindt zich op alle vier halfronden? ", "", "Afrika", "1", "Continent ", "", "", "image", "", "", "", "", "", "T", "F", "F", "F", "F", "", "", "3"],
+        ["", "In welke provincie ligt het oostelijkste punt van Nederland?", "", "Groningen", "2", "Provincie", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"]
+    ]
+},
+{
+    "name": "6 - Politiek & Maatschappij",
+    "rows": 29,
+    "columns": 22,
+    "data": [
+        ["nr", "languages.nl.text", "languages.en.text", "languages.nl.answer", "difficulty", "langauges.nl.label", "link", "author", "type", "url", "drive", "local", "category", "tags", "presentation.timer", "presentation.autotransition", "presentation.fullscreen", "presentation.autostart", "presentation.pause", "nrAnswers", "localAnswer", ""],
+        ["Q#", "Vraag", "Question", "Answer", "Difficulty", "Answer Label", "Link", "Author", "Type", "URL", "Drive location", "Local", "Category", "Tags", "Timer", "Auto transition", "Fullscreen", "Auto start", "Pause", "# Answers", "LocalAnswer", "Score"],
+        ["", "", "", "", "1.9", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["1", "Hoe heet deze 'politicus'?", "", "Hans Brusselmans", "2", "Naam", "", "", "image", "https://www.1limburg.nl/sites/default/files/public/styles/mediabox_detail/public/media-youtube/lBkOKd1MbGY.jpg", "", "content/R06/lBkOKd1MbGY.jpg", "", "", "T", "F", "F", "F", "F", "", "", "4"],
+        ["2", "Nederland kent zes eerbiedwaardige Hoge Colleges van Staat. Wat is de oudste van de zes?", "", "Algemene Rekenkamer", "2", "College", "", "", "image", "http://algarve-portal.com/_wf/image/?/imgs/uploads/Wappen-Niederlande.jpg", "", "content/R06/Wappen-Niederlande.jpg", "", "", "T", "F", "F", "F", "F", "", "", "4"],
+        ["3", "Begin september van dit jaar bewerkte Donald Trump een kaart zodanig met een stift zodat het leek alsof Alabama in het pad van de orkaan Dorian zou liggen. Dit schandaal werd vernoemd naar het merk stift waarmee deze aanpassing gedaan zou zijn. Welk merk?", "", "Sharpie", "2", "Merk", "", "", "image", "https://static.politico.com/b2/90/b7a1e85f46ed9cfc80d3a65db590/1995-donald-trump-gty-773.jpg", "", "content/R06/1995-donald-trump-gty-773.jpg", "", "", "", "", "", "", "", "", "", "4"],
+        ["4", "In welk land werd dit jaar Going to Ibiza van de Vengaboys opnieuw een nummer één hit? ", "", "Oostenrijk", "2", "Land", "", "", "image", "https://upload.wikimedia.org/wikipedia/commons/d/d8/Vengaboys.jpg", "", "content/R06/Vengaboys.jpg", "", "", "T", "F", "F", "F", "F", "", "", "4"],
+        ["5", "Welke Nederlandse politieke partij heeft de grootste jongerenorganisatie?", "", "SGP", "3", "Partij", "", "", "image", "https://tmi.news/wp-content/uploads/2017/03/Politieke-Jongerenpartijen-1024x630.jpg", "", "content/R06/Politieke-Jongerenpartijen-1024x630.jpg", "", "", "T", "F", "F", "F", "F", "", "", "4"],
+        ["6", "Welke politicus schreef dit briefje?", "", "Henk Bleeker", "2", "Politicus", "", "", "image", "https://interviewenco.files.wordpress.com/2013/01/briefjebleeker.jpg", "", "content/R06/briefjebleeker.jpg", "", "", "", "", "", "", "", "", "", ""],
+        ["7", "Wat is het enige land dat zijn staatshoofd afvaardigt naar EU-toppen?", "", "Frankrijk", "1", "Land", "", "", "image", "https://tpo.nl/wp-content/uploads/2018/12/donald-tusk-jean-claude-juncker-1.jpg", "", "content/R06/donald-tusk-jean-claude-juncker-1.jpg", "", "", "T", "F", "F", "F", "F", "", "", "4"],
+        ["8", "Hoe noemen we het hoofd van een waterschap?", "", "Dijkgraaf", "2", "Hoofd", "", "", "image", "https://upload.wikimedia.org/wikipedia/commons/6/6a/Roelofarendsveen1665.JPG", "", "content/R06/Roelofarendsveen1665.JPG", "", "", "T", "F", "F", "F", "F", "", "", "4"],
+        ["9", "De naam van deze politieke stroming komt uit het Grieks en betekent letterlijk "geen heerser". Onder welke naam kennen we deze stroming?", "", "Anarchie ", "1", "Politieke stroming", "", "", "image", "https://www.absofacts.com/img/g/georg-heinrich-sieveking-wxecutie-lodewijk-xvi.jpg", "", "content/R06/georg-heinrich-sieveking-wxecutie-lodewijk-xvi.jpg", "", "", "", "", "", "", "", "", "", "4"],
+        ["10", "Hoe heet de speaker van het Britse lagerhuis?", "", "John Bercow", "2", "Naam", "", "", "video", "https://upload.wikimedia.org/wikipedia/commons/c/c3/Apvienot%C4%81s_Karalistes_parlamenta_P%C4%81rst%C4%81vju_pal%C4%81tas_priek%C5%A1s%C4%93d%C4%93t%C4%81ja_ofici%C4%81l%C4%81_viz%C4%ABte_Latvij%C4%81_%2839361466915%29_%28cropped%29.jpg", "", "content\\R06\\Order.mp4", "", "", "F", "F", "F", "F", "F", "", "", "4"],
+        ["R", "In de nacht van 19 op 20 februari 2010 viel het kabinet Balkenende IV. Maar welk dossier leidde tot deze val?", "", "Uruzganmissie/Afghanistanmissie", "2", "Kabinetscrisis", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R", "Het ministerie van VWS werd in 1994 opgericht. Hoe heette de voorloper van dit ministerie?", "", "WVC", "1", "Ministerie", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R", "In de ambassade van welk land verbleef Julian Assange tussen 2012 en april van dit jaar?", "", "Ecuador", "2", "Ambassade", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R", "Het begon als dorpsrel maar werd een nationale kwestie. Welk dier met de naam Mauric groeide onlangs in een geruchtmakende rechtszaak uit tot een Franse held? ", "", "Haan (Maurice)", "2", "Dier", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R", "Met welke term wordt in de rechtspraak de voordracht van de officier van justitie genoemd waarin hij/zij de mening over de feiten geeft en de bewijsvoering.", "", "Requisitoir", "2", "Voordracht", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R", "Wie houdt op dit moment het record als langstzittende premier van Nederland?", "", "Ruud Lubbers", "1", "Premier", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R", "Onder welke \"geuzennaam\" kennen we de groep onder leiding van Jenny Douwes die in november 2017 van Zwarte Piet verhinderde om bij de landelijke intocht van Sinterklaas in Dokkum te demonstreren?  ", "", "Blokkeerfriezen", "3", "Geuzennaam", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["R", "Gesteund door 65.000 handtekeningen diende Arjan Lubach in 2015 een burgeriniatief in. Wat wilde hij met dat burgerinitiatief bereiken?", "", "Farao der Nederlanden worden", "3", "Burgerinitiatief", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["R", "Wat is de naam van internationaal evenement dat huishoudens en bedrijven oproept om de verlichting en andere elektrische apparatuur in hun huis te doven om energiebesparing te promoten en de koolstofdioxide-uitstoot te verminderen. Het wordt gesponsord door WNF en vond dit jaar op 30 maart plaats?", "", "Earth hour", "2", "Evenement", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R", "Elk jaar komt een groep van ongeveer 150 man, bestaande uit politieke, academische en industriële zwaargewichten uit de westerse wereld, samen. De inhoud van deze conferenties is steeds geheim. De groepering is genoemd naar de plek waar ze in 1954 voor het eerst bij elkaar kwam. Wat is de naam? ", "", "Bilderbergconferentie", "3", "Groepering", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R", "Wie is de Griekse god van de Noordenwind?", "", "Boreas", "3", "Griekse god", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R ", "Wat is de naam van de huidige Chief Executive of Hong Kong?", "", "Carry Lam", "2", "Chief Executive Hong Kong", "", "", "", "https://upload.wikimedia.org/wikipedia/commons/5/5f/%E6%B8%AF%E5%BA%9C%E5%9F%B7%E6%84%8F%E6%8E%A8%E9%80%B2%E3%80%8A%E9%80%83%E7%8A%AF%E6%A2%9D%E4%BE%8B%E3%80%8B%E4%BF%AE%E6%B3%95%E6%B0%91%E9%99%A3%E8%AC%B9%E6%85%8E%E5%8B%95%E5%93%A1%E6%B0%91%E7%9C%BE%E6%8A%97%E7%88%AD1_%28cropped%29.jpg", "", "content/R06/æ¸¯åºå·ææ¨é²ãéç¯æ¢ä¾ãä¿®æ³æ°é£è¬¹æåå¡æ°ç¾æç­1_(cropped).jpg", "", "", "", "", "", "", "", "", "", "4"],
+        ["R", "Dit is Stephanie Clifford. Een Amerikaanse actrice die in 2018 in de clinch lag met Donald Trump. Wat is haar artiestennaam?", "", "Stormy Daniels", "2", "Artiestennaam", "", "", "image", "https://upload.wikimedia.org/wikipedia/commons/6/6c/AN_Stormy_Daniels_1.jpg", "", "content/R01/AN_Stormy_Daniels_1.jpg", "", "", "T", "F", "F", "F", "F", "", "", "4"],
+        ["R", "De president van welk land staat ook wel bekend onder het acroniem AMLO?", "", "Mexico", "2", "Land", "", "", "image", "", "", "", "", "", "T", "F", "F", "F", "F", "", "", "3"],
+        ["R", "Wie is deze Amerikaanse presidentskandidaat?", "", "Elizabeth Warren", "3", "Presidentskandidaat", "", "", "image", "https://amp.businessinsider.com/images/5c990a586b526549100aec56-750-375.jpg", "", "content/R06/5c990a586b526549100aec56-750-375.jpg", "", "", "T", "F", "F", "F", "F", "", "", "4"],
+        ["R", "Hoeveel koningen zijn er in Amsterdam gekroond?", "", "Anarchie ", "2", "Koningen", "", "", "image", "", "", "", "", "", "T", "F", "F", "F", "F", "", "", "3"]
+    ]
+},
+{
+    "name": "7 - Kunst & Wetenschap",
+    "rows": 40,
+    "columns": 22,
+    "data": [
+        ["nr", "languages.nl.text", "languages.en.text", "languages.nl.answer", "difficulty", "langauges.nl.label", "link", "author", "type", "url", "drive", "local", "category", "tags", "presentation.timer", "presentation.autotransition", "presentation.fullscreen", "presentation.autostart", "presentation.pause", "nrAnswers", "localAnswer", ""],
+        ["Q#", "Vraag", "Question", "Answer", "Difficulty", "Answer Label", "Link", "Author", "Type", "URL", "Drive location", "Local", "Category", "Tags", "Timer", "Auto transition", "Fullscreen", "Auto start", "Pause", "# Answers", "LocalAnswer", "Score"],
+        ["", "", "", "", "2", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["1", "Eva is 36 jaar oud. Zij is nu twee keer zo oud als Sofie was toen zij zo oud was als Sofie nu is. Hoe oud is Sofie nu?", "", "27", "3", "Leeftijd", "", "", "image", "https://upload.wikimedia.org/wikipedia/commons/1/13/Houghton_Typ_520.03.736_-_Margarita_philosophica.jpg", "", "content/R06/Houghton_Typ_520.03.736_-_Margarita_philosophica.jpg", "Science", "puzzle", "T", "F", "F", "F", "F", "", "", "4"],
+        ["2", "Welke architect ontwierp het stadhuis van Hilversum? Hij ontwierp daarnaast onder andere de oude Bijenkorf in Rotterdam en de Utrechtse schouwburg.", "", "Willem Dudok", "2", "Architect", "", "", "image", "https://upload.wikimedia.org/wikipedia/commons/a/af/Raadhuis_Hilversum2.jpg", "", "content/R07/Raadhuis_Hilversum2.jpg", "Art", "architecture", "T", "F", "F", "F", "F", "", "", "4"],
+        ["3", "In welke plaats staat het oudste nog werkende planetarium ter wereld?", "", "Franeker", "1", "Plaats", "", "", "image", "https://upload.wikimedia.org/wikipedia/commons/d/df/Planetarium_Eise_Eisinga_in_Franeker.jpg", "", "content/R06/Planetarium_Eise_Eisinga_in_Franeker.jpg", "Science", "astronomy, history", "T", "F", "F", "F", "F", "", "", "4"],
+        ["4", "Hoe heet de wetenschapper in de Suske en Wiske-albums?", "Professor Barabas", "Professor Barabas", "1", "Wetenschapper", "", "", "image", "https://upload.wikimedia.org/wikipedia/en/3/35/Professor_Barabas.jpg", "", "content/R07/Professor_Barabas.jpg", "Art", "literature, cartoons", "T", "F", "F", "F", "F", "", "", "4"],
+        ["5", "Wat is de term voor de mannelijke leider van een groep gorilla's?", "", "Zilverrug", "2", "Term", "", "", "image", "https://upload.wikimedia.org/wikipedia/commons/2/24/Gorilla_gorilla11.jpg", "", "content/R07/Gorilla_gorilla11.jpg", "Science", "biology", "T", "F", "F", "F", "F", "", "", "4"],
+        ["6", "Hoe heet het boek dat A.F.Th. van der Heijden in 2011 schreef over zijn verongelukte zoon en dat later verfilmd werd?", "", "Tonio: een requiemroman", "1", "Boek", "", "", "image", "https://sergevanduijnhoven.files.wordpress.com/2010/05/tonio-alsoscarwilde-2009.jpg", "", "content/R07/tonio-alsoscarwilde-2009.jpg", "Art", "literature", "T", "F", "F", "F", "F", "", "", "4"],
+        ["7", "Welke twee wetenschappers bevochten elkaar eind 19de eeuw in de 'War of Currents'?", "Nicola Tesla, Thomas Edison", "Nicola Tesla, Thomas Edison", "3", "Wetenschappers", "", "", "image", "https://res.cloudinary.com/teepublic/image/private/s--QqcWLUM0--/b_rgb:fffffe,t_Heather%20Preview/c_limit,f_jpg,h_630,q_90,w_630/v1446225137/production/designs/196552_1.jpg", "", "content/R07/196552_1.jpg", "Science", "history", "T", "F", "F", "F", "F", "2", "", "4"],
+        ["8", "Op het Spui in Den Haag staat dit beeld. Van welke kunstenaar is het?", "", "Karel Appel", "3", "Kunstenaar", "", "", "image", "https://upload.wikimedia.org/wikipedia/commons/8/89/Den_Haag_Spui_Beeld_Karel_Appel.jpg", "", "content/R07/Den_Haag_Spui_Beeld_Karel_Appel.jpg", "Art", "sculpting", "T", "F", "F", "F", "F", "", "", "4"],
+        ["9", "Wat is de naam van de Italiaanse barokschilder die beroemd is vanwege de toepassing van licht/donkercontrasten?", "", "Caravaggio", "3", "Schilder", "", "", "image", "https://upload.wikimedia.org/wikipedia/commons/2/2a/Michelangelo_Caravaggio_038.jpg", "", "content/R07/Michelangelo_Caravaggio_038.jpg", "Art", "painting", "T", "F", "F", "F", "F", "", "", "4"],
+        ["10", "Voor wie goed heeft opgelet bij scheikunde. Wat is de SI-eenheid voor de hoeveelheid stof?", "", "Mol", "2", "SI-eenheid", "", "", "image", "https://chemistrygod.com/wp-content/uploads/2019/04/International-System-of-Units-SI-Units.png", "", "content/R07/International-System-of-Units-SI-Units.png", "Science", "chemistry", "T", "F", "F", "F", "F", "", "", "4"],
+        ["R", "Hoe heet dit instrument dat gebruikt wordt voor koersbepaling op zee door de afstand ten opzichte van sterren te meten?", "", "Sextant", "1", "Instrument", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R", "Hoe noemt men een schema dat zo is ingevuld dat de kolommen, rijen en diagonalen allemaal dezelfde som opleveren?", "", "Magisch vierkant", "2", "Naam", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R", "Hoe heet het programma van NASA dat de mensheid in 2024 weer naar de maan moet brengen?", "", "Artemis", "3", "Programma", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R", "Wat is na de zon en de maan het voor ons helderste object aan de hemel? Reden waarom het object ook wel eens avond- of morgenster wordt genoemd?", "", "Venus", "1", "Planeet", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R", "Alle planeten in ons zonnestelsel draaien tegen de klok in. Alle planeten? Nee, een planeet biedt moedig weerstand door met de klok mee te draaien. Welke planeet is dat? ", "", "Venus", "3", "Planeet", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R", "Vanaf welk Londens station vertrekt de Hogwarth express in de Harry Potter boeken?", "", "King's Cross", "3", "Station", "", "", "", "http://blog.stenaline.nl/wp-content/uploads/sites/8/2013/12/Kings-Cross-perron-9-34-Harry-Potter.jpg", "", "content/R07/Kings-Cross-perron-9-34-Harry-Potter.jpg", "", "", "", "", "", "", "", "", "", "4"],
+        ["R", "De voormalige Amerikaanse ambassade zou het nieuwe onderkomen worden voor een museum. Maar voor welke kunstenaar?", "", "MC Escher", "1", "Museum", "", "", "", "https://upload.wikimedia.org/wikipedia/commons/8/82/Amerikaanse_ambassade_in_Den_Haag.JPG", "", "content/R07/Amerikaanse_ambassade_in_Den_Haag.JPG", "", "", "", "", "", "", "", "", "", "4"],
+        ["R", "In augustus van dit jaar overleed deze schrijfster. Een aantal van haar boeken wordt gezien als klassiekers waaronder The Bluest Eye, Beloved  en Song of Solomon. Ze was de eerste Afroamerikaanse schrijfster die de Nobelprijs voor literatuur won.", "", "Toni Morrison", "2", "Schrijfster", "", "", "", "https://upload.wikimedia.org/wikipedia/commons/3/3a/Toni_Morrison.jpg", "", "content/R07/Toni_Morrison.jpg", "", "", "", "", "", "", "", "", "", "4"],
+        ["R", "Hoe heet de kunststroming die dominant was tussen 1000 en 1200 in West-Europa", "", "Romaans", "2", "Kunststroming", "", "", "", "https://upload.wikimedia.org/wikipedia/commons/4/4b/00_0439_Abtei_Maria_Laach_-_Deutschland.jpg", "", "content/R07/00_0439_Abtei_Maria_Laach_-_Deutschland.jpg", "", "", "", "", "", "", "", "", "", "4"],
+        ["R", "Jullie zien hier een kunstwerk van Christo, de beroemde inpakkunstenaar. In 2020 zal hij een beroemd Europees gebouw gaan inpakken. Welk gebouw is dit?", "", "Arc de Triomphe", "3", "Gebouw", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R", "Wat is de naam van deze door een Zwitserse psychiater ontwikkelde inktvlekkentest die een indruk zou moeten geven van de karaktertrekken van de testpersoon?", "", "Rorschach-test", "2", "Test", "", "", "", "https://upload.wikimedia.org/wikipedia/commons/a/a7/Rorschach1.jpg", "", "content/R07/Rorschach1.jpg", "", "", "", "", "", "", "", "", "", "4"],
+        ["R", "Wat is de naam van dit dier?", "", "Basilisk", "2", "Dier", "", "", "", "https://www.youtube.com/watch?v=CW0TijmAUqY", "", "content/R07/watch", "", "", "", "", "", "", "", "", "", "4"],
+        ["R", "Hoe heet het fenomeen waarbij paddestoelen in een cirkel groeien?", "", "Heksenkring", "1", "Fenomeen", "", "", "", "https://upload.wikimedia.org/wikipedia/commons/9/9f/Heksenkring.jpg", "", "content/R07/Heksenkring.jpg", "", "", "", "", "", "", "", "", "", "4"],
+        ["R", "Wat is de naam van deze plant? Het plantensap wordt veel in de cosmetica gebruikt, het vluchtvlees wordt gebruikt in dranken.", "", "Aloe Vera", "2", "Plant", "", "", "", "https://upload.wikimedia.org/wikipedia/commons/5/56/Starr_011104-0040_Aloe_vera.jpg", "", "content/R07/Starr_011104-0040_Aloe_vera.jpg", "", "", "", "", "", "", "", "", "", "4"],
+        ["R", "Hoe heet het klassieke Japanse muzikale theater dat sinds de 14e eeuw wordt opgevoerd en waarbij de spelers vaak maskers dragen?", "", "Noh/No", "3", "Theater", "", "", "", "https://upload.wikimedia.org/wikipedia/commons/e/e6/Noh3.jpg", "", "content/R07/Noh3.jpg", "", "", "", "", "", "", "", "", "", "4"],
+        ["R", "Welke koolstofvariant is tegenwoordig de grondstof voor potlood?", "", "Grafiet", "2", "Koolstofvariant", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R", "Welke kunstenaar ontwierp het Chupa Chups logo?", "", "Salvador Dali", "3", "Ontwerper", "", "", "", "https://upload.wikimedia.org/wikipedia/commons/e/e6/Noh3.jpg", "", "content/R07/Noh3.jpg", "", "", "", "", "", "", "", "", "", "4"],
+        ["R", "Wat is de naam van het element met symbool Sn en atoomnummer 50. Het hecht zich gemakkelijk aan ijzer en wordt daarom vaak gebruikt als roestwerende laag.", "", "Tin", "1", "Element", "", "", "", "https://upload.wikimedia.org/wikipedia/commons/5/56/Metal_cube_tin.jpg", "", "content/R07/Metal_cube_tin.jpg", "", "", "", "", "", "", "", "", "", "4"],
+        ["R", "Hoe heet de ontwerper van deze stoel?", "", "Gispen", "2", "Ontwerper", "", "", "", "https://upload.wikimedia.org/wikipedia/commons/8/8f/Gispen404.jpg", "", "content/R07/Gispen404.jpg", "", "", "", "", "", "", "", "", "", "4"],
+        ["R", "Onder welke naam kennen we de ietwat kitscherige figuurtjes van de Duitse porceleinfabriek Goebel beter?", "", "Hummels/Hummeltjes", "3", "Figuren", "", "", "", "http://cdn.shopify.com/s/files/1/0070/9528/7908/products/Hum_347_tmk6_1a_800x.jpg", "", "content/R07/Hum_347_tmk6_1a_800x.jpg", "", "", "", "", "", "", "", "", "", "4"],
+        ["R", "Wat was het eerste Amerikaans modetijdschrift uitgebracht in 1867. Het wordt vandaag maandelijks uitgegeven en richt zich op \"women who are the first to buy the best, from casual to couture\".", "", "Harper's Bazaar", "3", "Modetijdschrift", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R", "Hoe noemen we het verschijnsel waarbij een ster explodeert. De uitbarsting is herkenbaar aan de enorme hoeveelheid licht die hierbij wordt uitgestraald. ", "", "Supernova", "1", "Verschijnsel", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3"],
+        ["R", "Wat is de naam van het mythologische wezen deels mens, deels vogel uit het hindoeisme die rijdier is van de hindoegod Vishnoe. Dit wezen is het nationale symbool van Thailand maar zit ook in het wapen van Indonesië.", "", "Garoeda", "2", "Mythologisch wezen", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["R", "Wat is de naam van deze Amerikaan die bekend is geworden als uitvinder van het vulkaniseren van rubber waarvoor hij in 1844 een octrooi ontving?", "", "Charles Goodyear", "2", "Uitvinder", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["", "Wat is de naam van het proces waarbij door middel van verdamping twee of meerdere stoffen van elkaar gescheiden worden. Dit gebaseerd op het verschil in kookpunt tussen deze stoffen.", "", "Destilleren", "2", "Proces", "", "", "image", "", "", "", "", "", "T", "F", "F", "F", "F", "", "", "3"],
+        ["", "Tegen welke ziektes beschermt de DTP vaccinatie?", "", "Difterie, tetanus, polio", "1", "Ziektes", "", "", "image", "", "", "", "", "", "T", "F", "F", "F", "F", "", "", "3"],
+        ["R", "Welke vier dieren vormden de Bremer Stadsmuzikanten?", "", "Ezel, hond, haan, kat", "1", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "2"]
+    ]
+},
+{
+    "name": "8 - Muziek",
+    "rows": 21,
+    "columns": 22,
+    "data": [
+        ["nr", "languages.nl.text", "languages.en.text", "languages.nl.answer", "difficulty", "langauges.nl.label", "link", "author", "type", "url", "drive", "local", "category", "tags", "presentation.timer", "presentation.autotransition", "presentation.fullscreen", "presentation.autostart", "presentation.pause", "nrAnswers", "localAnswer", ""],
+        ["Q#", "Vraag", "Question", "Answer", "Difficulty", "Answer Label", "Link", "Author", "Type", "URL", "Drive location", "Local", "Category", "Tags", "Timer", "Auto transition", "Fullscreen", "Auto start", "Pause", "# Answers", "LocalAnswer", "Score"],
+        ["", "", "", "", "2.1", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["1", "Componist/Titel", "", "Sergei Prokofjev - Peter & De Wolf", "3", "Componist - Titel", "", "", "audio", "", "", "content\\R08\\01 - Prokofjev - Peter & The Wolf (mp3cut.net).mp3", "Music", "classic", "F", "T", "F", "T", "T", "2", "", "3"],
+        ["2", "Artiest/Titel", "", "Dolly Parton & Kenny Rogers - Islands in the stream", "2", "Artiest - Titel", "", "", "audio", "", "", "content\\R08\\02 - 1983 - Dolly Parton & Kenny Rogers - Islands In The Stream (mp3cut.net).mp3", "Music", "80s", "F", "T", "F", "T", "T", "2", "", "3"],
+        ["3", "Artiest/Titel", "", "Destiny's Child - Survivor", "2", "Artiest - Titel", "", "", "audio", "", "", "content\\R08\\03 - 2009 - Destinys child - Survivor.mp3", "Music", "00s", "F", "T", "F", "T", "T", "2", "", "3"],
+        ["4", "Artiest/Titel", "", "Snow Patrol - Shut Your Eyes", "2", "Artiest - Titel", "", "", "audio", "", "", "content\\R08\\04 - Snow Patrol - Shut Your Eyes.mp3", "Music", "10s", "F", "T", "F", "T", "T", "2", "", "3"],
+        ["5", "Artiest/Titel", "", "Them - Gloria", "3", "Artiest - Titel", "", "", "audio", "", "", "content\\R08\\05 - Them - Gloria.mp3", "Music", "60s", "F", "T", "F", "T", "T", "2", "", "3"],
+        ["6", "Artiest/Titel", "", "Pixies - Monkey Gone To Heaven", "3", "Artiest - Titel", "", "", "audio", "", "", "content\\R08\\06 - Pixies - Monkey Gone To Heaven (mp3cut.net).mp3", "Music", "80s", "F", "T", "F", "T", "T", "2", "", "3"],
+        ["7", "Artiest/Titel", "", "Modjo - Lady (Hear Me Tonight)", "1", "Artiest - Titel", "", "", "audio", "", "", "content\\R08\\07 - 2000 - Modjo - Lady (Hear Me Tonight).mp3", "Music", "00s", "F", "T", "F", "T", "T", "2", "", "3"],
+        ["8", "Artiest/Titel", "", "Billie Holiday - That Ole Devil Called Love", "2", "Artiest - Titel", "", "", "audio", "", "", "content\\R08\\08 - Billy Holiday - That Ole Devil Called Love (mp3cut.net).mp3", "Music", "50s", "F", "T", "F", "T", "T", "2", "", "3"],
+        ["9", "Artiest/Titel", "", "Joe Buck - The Way You Take Time", "2", "Artiest - Titel", "", "", "audio", "", "", "content\\R08\\09 - Joe Buck - The Way You Take Time (mp3cut.net).mp3", "Music", "10s", "F", "T", "F", "T", "T", "2", "", "3"],
+        ["10", "Artiest/Titel", "", "Tavares - Heaven Must Be Missing An Angel", "1", "Artiest - Titel", "", "", "audio", "", "", "content\\R08\\10 - Tavares - Heaven Must Be Missing An Angel (mp3cut.net).mp3", "Music", "70s", "F", "T", "F", "T", "T", "2", "", "3"],
+        ["R", "Artiest/Titel", "Echosmith - Cool Kids", "Echosmith - Cool Kids", "2", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "2"],
+        ["R", "Artiest/Titel", "", "Bruno Mars - 24K Magic", "2", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "2"],
+        ["R", "Artiest/Titel", "", "Boston - More than a feeling", "2", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "2"],
+        ["R", "Artiest/Titel", "", "Spider Murphy Gang - Skandal im Sperbezirk", "2", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "2"],
+        ["R", "Artiest/Titel", "", "Xavier Rudd - Follow the sun", "2", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "2"],
+        ["R", "Artiest/Titel", "", "Fatboy Slim - The Rockafeller Skank", "3", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "2"],
+        ["R", "Artiest/Titel", "", "Rainbow - Since You've Been Gone", "3", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "2"],
+        ["R", "Artiest/Titel", "Asia - Heat of the Moment", "Asia - Heat of the Moment", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "2"]
+    ]
+}]
+}]]></script>
+        <sys_class_name>sys_script_include</sys_class_name>
+        <sys_created_by>bert-jan.fransen</sys_created_by>
+        <sys_created_on>2020-12-22 15:15:47</sys_created_on>
+        <sys_id>4b284034db516010d5194782399619ac</sys_id>
+        <sys_mod_count>28</sys_mod_count>
+        <sys_name>loadData</sys_name>
+        <sys_package display_value="PubQuiz" source="x_0221_pubquiz">cfe7f7a4db116010d51947823996191f</sys_package>
+        <sys_policy>read</sys_policy>
+        <sys_scope display_value="PubQuiz">cfe7f7a4db116010d51947823996191f</sys_scope>
+        <sys_update_name>sys_script_include_4b284034db516010d5194782399619ac</sys_update_name>
+        <sys_updated_by>bert-jan.fransen</sys_updated_by>
+        <sys_updated_on>2021-01-11 20:31:51</sys_updated_on>
+    </sys_script_include>
+</record_update>

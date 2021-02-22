@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?><record_update table="sp_widget">
+    <sp_widget action="INSERT_OR_UPDATE">
+        <category>custom</category>
+        <client_script><![CDATA[api.controller=function() {  /* widget controller */  var c = this;};]]></client_script>
+        <controller_as>c</controller_as>
+        <css>.title {
+  font-size: 32px;
+  font-weight: bold;
+}
+
+.round-header {
+  font-size: 20px;
+  margin: 20px;
+}
+
+.question-header {
+  border-bottom: solid;
+  border-width: 1px;
+}
+
+.question .answer {
+  font-style: italic;
+}
+
+.question {
+  margin-bottom: 15px;
+}
+
+body {
+  overflow: hidden; /* Hide scrollbars */
+}</css>
+        <data_table>sp_instance</data_table>
+        <demo_data/>
+        <description/>
+        <docs/>
+        <field_list/>
+        <has_preview>false</has_preview>
+        <id>quiz1</id>
+        <internal>false</internal>
+        <link><![CDATA[function link(scope, element, attrs, controller) {  }]]></link>
+        <name>Quiz1</name>
+        <option_schema/>
+        <public>false</public>
+        <roles/>
+        <script><![CDATA[(function() {
+	var quizId = $sp.getParameter('quiz');
+	var pq = new x_0221_pubquiz.PubQuizJs();
+	var q = new pq.Quiz();
+	q.load('dfe09ef9db612010d5194782399619a9')
+	data.quizJson = q.toJSON();
+	
+})();]]></script>
+        <servicenow>false</servicenow>
+        <sys_class_name>sp_widget</sys_class_name>
+        <sys_created_by>bert-jan.fransen</sys_created_by>
+        <sys_created_on>2021-01-08 11:07:08</sys_created_on>
+        <sys_id>6983768adb216010d519478239961983</sys_id>
+        <sys_mod_count>31</sys_mod_count>
+        <sys_name>Quiz1</sys_name>
+        <sys_package display_value="PubQuiz" source="x_0221_pubquiz">cfe7f7a4db116010d51947823996191f</sys_package>
+        <sys_policy/>
+        <sys_scope display_value="PubQuiz">cfe7f7a4db116010d51947823996191f</sys_scope>
+        <sys_update_name>sp_widget_6983768adb216010d519478239961983</sys_update_name>
+        <sys_updated_by>bert-jan.fransen</sys_updated_by>
+        <sys_updated_on>2021-01-08 14:18:09</sys_updated_on>
+        <template><![CDATA[<div id="pubquiz">
+    <div class="title">
+      {{c.data.quizJson.title}}
+    </div>
+    
+    <div ng-repeat="round in c.data.quizJson.rounds" id="round-{{$index}}">
+      <div class="round-header" ng-init="collapsed=false" ng-click="collapsed=!collapsed">Ronde {{$index + 1}}</div>
+      <div class="round-content" ng-if="!collapsed">
+        <div ng-repeat="question in round.questions" id="question-{{$index}}" class="question">
+          <div class="question-header">Vraag {{$index + 1}}</div>
+          <div class="text">{{question.question_nl}}</div>
+          <div class="answer">{{question.answer_nl}}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>]]></template>
+    </sp_widget>
+</record_update>

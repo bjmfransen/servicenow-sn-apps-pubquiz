@@ -1,0 +1,433 @@
+<?xml version="1.0" encoding="UTF-8"?><record_update table="sys_script_include">
+    <sys_script_include action="DELETE">
+        <access>package_private</access>
+        <active>true</active>
+        <api_name>x_0221_pubquiz.PubQuizJs</api_name>
+        <caller_access/>
+        <client_callable>false</client_callable>
+        <description/>
+        <name>PubQuizJs</name>
+        <script><![CDATA[var PubQuizJs = Class.create();
+PubQuizJs.prototype = {
+	initialize: function(){},
+	
+	// library contains the constructors of the three main PubQuiz components
+	Quiz: _Quiz,
+	Round: _Round,
+	Question: _Question
+}
+
+function _Quiz(name){
+	this._data = {};
+	this._data.name = name;
+	this._rounds = [];
+	gs.debug('name = '+name)
+	gs.debug('this._data.name = '+this._data.name)
+
+	return this;
+}
+
+_Quiz.prototype = {
+	loadRaw: function(raw, version){
+		// loads the quiz from the raw google sheet data provided in raw
+		// function assumes header fields to be v2, headerTranslation allows different headers to be mapped to v2. 'v1' is a shortcut for the v1 to v2 mapping
+		// first, split the data into a definition sheet and all round sheets
+		var definitionSheet;
+		var roundSheets = raw.filter(function(sheet){
+				var re = /(\d+)[-_ ]+(.*)/;
+				var match = sheet.name.match(re);
+				if (match){
+						// name matches the pattern of a round. store its number and pass it through the filter
+						sheet._sequence = +match[1];
+						sheet._name = match[2];
+						return true;
+				} else {
+						// name does not match the pattern of a round; it is the definition sheet and it will not be passed through the filter
+						definitionSheet = sheet;
+						return false;
+				}
+		}).sort(function(a, b){
+				if (a._sequence < b._sequence){
+						return -1;
+				} else {
+						return 1;
+				}
+		})
+
+		var defs = {
+			columns: [],
+			version: version
+		};
+
+		definitionSheet.data.forEach(function(row, index){
+			if (index > 0){ // first row is the header row, we ignore it
+				if (row[0] === 'column'){
+					// column names go on to the column array
+					defs.columns.push(row[3])
+				} else {
+					// key/value pairs
+					defs[row[0]] = row[1]
+				}
+			}
+		});
+
+		// fieldsRow contains the index of the header row; it defaults to the first line
+		defs.fieldsRow = defs.fieldsRow || 0;
+		this.setTitle(defs.title);
+		this.setDescription(defs.description);
+
+
+
+
+roundSheets.length = 1;
+
+
+
+
+		this._rounds = roundSheets.map(function(roundSheet){
+			var rnd = new _Round();
+			rnd.loadRaw(roundSheet, defs);
+			return rnd;
+		})
+gs.debug(this.toString())
+		return this;
+	},
+	
+	toJSON: function(){
+		var result = this._data;
+		result.rounds = this._rounds.map(function(round){
+			return round.toJSON();
+		})
+
+		return result;
+	},
+	
+	toString: function(){
+		return JSON.stringify(this.toJSON());
+	},
+
+	setTitle: 				function(title){ this.title = title; },
+	setDescription: 	function(description){ this.description = description; }
+}
+
+function _Round(){
+	this._data = {};
+	this._questions = [];
+	return this;
+}
+
+_Round.prototype = {
+	loadRaw: function(roundSheet, defs){
+		gs.debug('_Round#loadRaw')
+		var questions = roundSheet.data.splice(defs.headerRows, defs.QuestionsPerRound);
+		var header = roundSheet.data.splice(defs.fieldsRow, 1)[0];
+
+		if (defs.version === 'v1'){
+			header = convertHeader(header);
+		}
+
+
+
+
+questions.length = 1;
+
+
+
+
+		this._questions = questions.map(function(line){
+			return new _Question().loadRaw(header, line, defs);
+		})
+
+		return this;
+	},
+	
+	toJSON: function(){
+		var result = this._data;
+		result.questions = this._questions.map(function(question){
+			return question.toJSON();
+		})
+	},
+	
+	toString: function(){
+		return JSON.stringify(this.toJSON());
+	}
+}
+
+function _Question(){
+	this._data = {};
+
+	return this;
+}
+
+
+_Question.prototype = {
+	loadRaw: function(header, line, defs){
+		gs.debug('_Question#loadRaw')
+		var data = this._data;
+		header.forEach(function(fieldname, index){
+			data[fieldname] = line[index];
+		});
+
+		return this;
+	},
+	
+	toJSON: function(){
+		return this._data;
+	},
+	
+	toString: function(){
+		return JSON.stringify(this.toJSON());
+	}
+}
+
+function convertHeader(header){
+	return header.map(function(field){
+		if (field === 'languages.nl.text') 		return 'question_nl';
+		if (field === 'languages.nl.answer') 	return 'answer_nl';
+		if (field === 'languages.nl.label') 	return 'label_nl';
+		if (field === 'languages.en.text') 		return 'question_en';
+		if (field === 'languages.en.answer') 	return 'answer_en';
+		if (field === 'languages.en.label') 	return 'label_en';
+	})
+}]]></script>
+        <sys_class_name>sys_script_include</sys_class_name>
+        <sys_created_by>admin</sys_created_by>
+        <sys_created_on>2021-01-04 16:20:43</sys_created_on>
+        <sys_id>88f453b8db252010d5194782399619d6</sys_id>
+        <sys_mod_count>0</sys_mod_count>
+        <sys_name>PubQuizJs</sys_name>
+        <sys_package display_value="PubQuiz" source="x_0221_pubquiz">cfe7f7a4db116010d51947823996191f</sys_package>
+        <sys_policy>read</sys_policy>
+        <sys_scope display_value="PubQuiz">cfe7f7a4db116010d51947823996191f</sys_scope>
+        <sys_update_name>sys_script_include_88f453b8db252010d5194782399619d6</sys_update_name>
+        <sys_updated_by>admin</sys_updated_by>
+        <sys_updated_on>2021-01-04 16:20:43</sys_updated_on>
+    </sys_script_include>
+    <sys_update_version action="INSERT_OR_UPDATE">
+        <action>DELETE</action>
+        <application display_value="PubQuiz">cfe7f7a4db116010d51947823996191f</application>
+        <file_path/>
+        <instance_id>eac4d835dbc1374407072f17d49619d4</instance_id>
+        <instance_name>dev83761</instance_name>
+        <name>sys_script_include_88f453b8db252010d5194782399619d6</name>
+        <payload>&lt;?xml version="1.0" encoding="UTF-8"?&gt;&lt;record_update table="sys_script_include"&gt;&lt;sys_script_include action="INSERT_OR_UPDATE"&gt;&lt;access&gt;package_private&lt;/access&gt;&lt;active&gt;true&lt;/active&gt;&lt;api_name&gt;x_0221_pubquiz.PubQuizJs&lt;/api_name&gt;&lt;caller_access/&gt;&lt;client_callable&gt;false&lt;/client_callable&gt;&lt;description/&gt;&lt;name&gt;PubQuizJs&lt;/name&gt;&lt;script&gt;&lt;![CDATA[var PubQuizJs = Class.create();
+PubQuizJs.prototype = {
+	initialize: function(){},
+	
+	// library contains the constructors of the three main PubQuiz components
+	Quiz: _Quiz,
+	Round: _Round,
+	Question: _Question
+}
+
+function _Quiz(name){
+	this._data = {};
+	this._data.name = name;
+	this._rounds = [];
+	gs.debug('name = '+name)
+	gs.debug('this._data.name = '+this._data.name)
+
+	return this;
+}
+
+_Quiz.prototype = {
+	loadRaw: function(raw, version){
+		// loads the quiz from the raw google sheet data provided in raw
+		// function assumes header fields to be v2, headerTranslation allows different headers to be mapped to v2. 'v1' is a shortcut for the v1 to v2 mapping
+		// first, split the data into a definition sheet and all round sheets
+		var definitionSheet;
+		var roundSheets = raw.filter(function(sheet){
+				var re = /(\d+)[-_ ]+(.*)/;
+				var match = sheet.name.match(re);
+				if (match){
+						// name matches the pattern of a round. store its number and pass it through the filter
+						sheet._sequence = +match[1];
+						sheet._name = match[2];
+						return true;
+				} else {
+						// name does not match the pattern of a round; it is the definition sheet and it will not be passed through the filter
+						definitionSheet = sheet;
+						return false;
+				}
+		}).sort(function(a, b){
+				if (a._sequence &lt; b._sequence){
+						return -1;
+				} else {
+						return 1;
+				}
+		})
+
+		var defs = {
+			columns: [],
+			version: version
+		};
+
+		definitionSheet.data.forEach(function(row, index){
+			if (index &gt; 0){ // first row is the header row, we ignore it
+				if (row[0] === 'column'){
+					// column names go on to the column array
+					defs.columns.push(row[3])
+				} else {
+					// key/value pairs
+					defs[row[0]] = row[1]
+				}
+			}
+		});
+
+		// fieldsRow contains the index of the header row; it defaults to the first line
+		defs.fieldsRow = defs.fieldsRow || 0;
+		this.setTitle(defs.title);
+		this.setDescription(defs.description);
+
+
+
+
+roundSheets.length = 1;
+
+
+
+
+		this._rounds = roundSheets.map(function(roundSheet){
+			var rnd = new _Round();
+			rnd.loadRaw(roundSheet, defs);
+			return rnd;
+		})
+gs.debug(this.toString())
+		return this;
+	},
+	
+	toJSON: function(){
+		var result = this._data;
+		result.rounds = this._rounds.map(function(round){
+			return round.toJSON();
+		})
+
+		return result;
+	},
+	
+	toString: function(){
+		return JSON.stringify(this.toJSON());
+	},
+
+	setTitle: 				function(title){ this.title = title; },
+	setDescription: 	function(description){ this.description = description; }
+}
+
+function _Round(){
+	this._data = {};
+	this._questions = [];
+	return this;
+}
+
+_Round.prototype = {
+	loadRaw: function(roundSheet, defs){
+		gs.debug('_Round#loadRaw')
+		var questions = roundSheet.data.splice(defs.headerRows, defs.QuestionsPerRound);
+		var header = roundSheet.data.splice(defs.fieldsRow, 1)[0];
+
+		if (defs.version === 'v1'){
+			header = convertHeader(header);
+		}
+
+
+
+
+questions.length = 1;
+
+
+
+
+		this._questions = questions.map(function(line){
+			return new _Question().loadRaw(header, line, defs);
+		})
+
+		return this;
+	},
+	
+	toJSON: function(){
+		var result = this._data;
+		result.questions = this._questions.map(function(question){
+			return question.toJSON();
+		})
+	},
+	
+	toString: function(){
+		return JSON.stringify(this.toJSON());
+	}
+}
+
+function _Question(){
+	this._data = {};
+
+	return this;
+}
+
+
+_Question.prototype = {
+	loadRaw: function(header, line, defs){
+		gs.debug('_Question#loadRaw')
+		var data = this._data;
+		header.forEach(function(fieldname, index){
+			data[fieldname] = line[index];
+		});
+
+		return this;
+	},
+	
+	toJSON: function(){
+		return this._data;
+	},
+	
+	toString: function(){
+		return JSON.stringify(this.toJSON());
+	}
+}
+
+function convertHeader(header){
+	return header.map(function(field){
+		if (field === 'languages.nl.text') 		return 'question_nl';
+		if (field === 'languages.nl.answer') 	return 'answer_nl';
+		if (field === 'languages.nl.label') 	return 'label_nl';
+		if (field === 'languages.en.text') 		return 'question_en';
+		if (field === 'languages.en.answer') 	return 'answer_en';
+		if (field === 'languages.en.label') 	return 'label_en';
+	})
+}]]&gt;&lt;/script&gt;&lt;sys_class_name&gt;sys_script_include&lt;/sys_class_name&gt;&lt;sys_created_by&gt;admin&lt;/sys_created_by&gt;&lt;sys_created_on&gt;2021-01-04 16:20:43&lt;/sys_created_on&gt;&lt;sys_id&gt;88f453b8db252010d5194782399619d6&lt;/sys_id&gt;&lt;sys_mod_count&gt;0&lt;/sys_mod_count&gt;&lt;sys_name&gt;PubQuizJs&lt;/sys_name&gt;&lt;sys_package display_value="PubQuiz" source="x_0221_pubquiz"&gt;cfe7f7a4db116010d51947823996191f&lt;/sys_package&gt;&lt;sys_policy&gt;read&lt;/sys_policy&gt;&lt;sys_scope display_value="PubQuiz"&gt;cfe7f7a4db116010d51947823996191f&lt;/sys_scope&gt;&lt;sys_update_name&gt;sys_script_include_88f453b8db252010d5194782399619d6&lt;/sys_update_name&gt;&lt;sys_updated_by&gt;admin&lt;/sys_updated_by&gt;&lt;sys_updated_on&gt;2021-01-04 16:20:43&lt;/sys_updated_on&gt;&lt;/sys_script_include&gt;&lt;/record_update&gt;</payload>
+        <payload_hash>-2015650713</payload_hash>
+        <record_name>PubQuizJs</record_name>
+        <reverted_from/>
+        <source>c3e7f7a4db116010d519478239961922</source>
+        <source_table>sys_update_set</source_table>
+        <state>previous</state>
+        <sys_created_by>admin</sys_created_by>
+        <sys_created_on>2021-01-04 16:20:43</sys_created_on>
+        <sys_id>c0f453b8db252010d5194782399619da</sys_id>
+        <sys_mod_count>0</sys_mod_count>
+        <sys_recorded_at>176ce33651d0000001</sys_recorded_at>
+        <sys_updated_by>admin</sys_updated_by>
+        <sys_updated_on>2021-01-04 16:20:43</sys_updated_on>
+        <type>Script Include</type>
+        <update_guid>c8f453b8062520108d281cd97a7202d9</update_guid>
+        <update_guid_history>c8f453b8062520108d281cd97a7202d9:-2015650713</update_guid_history>
+    </sys_update_version>
+    <sys_metadata_delete action="INSERT_OR_UPDATE">
+        <sys_audit_delete/>
+        <sys_class_name>sys_metadata_delete</sys_class_name>
+        <sys_created_by>admin</sys_created_by>
+        <sys_created_on>2021-01-04 16:21:28</sys_created_on>
+        <sys_db_object display_value="" name="sys_script_include">sys_script_include</sys_db_object>
+        <sys_id>27d584fb20ec4438a410b8db67b6fb90</sys_id>
+        <sys_metadata>88f453b8db252010d5194782399619d6</sys_metadata>
+        <sys_mod_count>0</sys_mod_count>
+        <sys_name>PubQuizJs</sys_name>
+        <sys_package display_value="PubQuiz" source="x_0221_pubquiz">cfe7f7a4db116010d51947823996191f</sys_package>
+        <sys_parent/>
+        <sys_policy>read</sys_policy>
+        <sys_scope display_value="PubQuiz">cfe7f7a4db116010d51947823996191f</sys_scope>
+        <sys_scope_delete display_value="">4cb3d53cbae6456fa69dc2098630bdc9</sys_scope_delete>
+        <sys_update_name>sys_script_include_88f453b8db252010d5194782399619d6</sys_update_name>
+        <sys_update_version display_value="sys_script_include_88f453b8db252010d5194782399619d6">c0f453b8db252010d5194782399619da</sys_update_version>
+        <sys_updated_by>admin</sys_updated_by>
+        <sys_updated_on>2021-01-04 16:21:28</sys_updated_on>
+    </sys_metadata_delete>
+</record_update>

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?><record_update table="sys_db_view_table">
+    <sys_db_view_table action="INSERT_OR_UPDATE">
+        <active>true</active>
+        <left_join>false</left_join>
+        <order>100</order>
+        <sys_class_name>sys_db_view_table</sys_class_name>
+        <sys_created_by>bert-jan.fransen</sys_created_by>
+        <sys_created_on>2020-12-30 11:50:56</sys_created_on>
+        <sys_id>40176c53db9d6010d519478239961991</sys_id>
+        <sys_mod_count>0</sys_mod_count>
+        <sys_name>x_0221_pubquiz_quiz_round_m2m</sys_name>
+        <sys_package display_value="PubQuiz" source="x_0221_pubquiz">cfe7f7a4db116010d51947823996191f</sys_package>
+        <sys_policy/>
+        <sys_scope display_value="PubQuiz">cfe7f7a4db116010d51947823996191f</sys_scope>
+        <sys_update_name>sys_db_view_table_40176c53db9d6010d519478239961991</sys_update_name>
+        <sys_updated_by>bert-jan.fransen</sys_updated_by>
+        <sys_updated_on>2020-12-30 11:50:56</sys_updated_on>
+        <table>x_0221_pubquiz_quiz_round_m2m</table>
+        <variable_prefix>quizround</variable_prefix>
+        <view display_value="x_0221_pubquiz_full_quiz">1bf62c53db9d6010d519478239961949</view>
+        <where_clause/>
+    </sys_db_view_table>
+</record_update>

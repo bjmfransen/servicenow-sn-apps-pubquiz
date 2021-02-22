@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?><record_update sys_domain="global" table="sys_ui_application">
+    <sys_ui_application action="INSERT_OR_UPDATE">
+        <active>true</active>
+        <hint/>
+        <name>Round Question </name>
+        <order/>
+        <roles>x_0221_pubquiz.round_question_m2m_user</roles>
+        <sys_class_name>sys_ui_application</sys_class_name>
+        <sys_created_by>bert-jan.fransen</sys_created_by>
+        <sys_created_on>2020-12-22 14:23:05</sys_created_on>
+        <sys_domain>global</sys_domain>
+        <sys_domain_path>/</sys_domain_path>
+        <sys_id>b95d3be8db116010d519478239961920</sys_id>
+        <sys_mod_count>0</sys_mod_count>
+        <sys_name>Round Question </sys_name>
+        <sys_overrides/>
+        <sys_package display_value="PubQuiz" source="x_0221_pubquiz">cfe7f7a4db116010d51947823996191f</sys_package>
+        <sys_policy/>
+        <sys_scope display_value="PubQuiz">cfe7f7a4db116010d51947823996191f</sys_scope>
+        <sys_update_name>sys_ui_application_b95d3be8db116010d519478239961920</sys_update_name>
+        <sys_updated_by>bert-jan.fransen</sys_updated_by>
+        <sys_updated_on>2020-12-22 14:23:05</sys_updated_on>
+    </sys_ui_application>
+</record_update>

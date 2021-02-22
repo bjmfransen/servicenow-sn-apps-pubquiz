@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?><database>
+    <element label="JSON" max_length="40" name="x_0221_pubquiz_json" sizeclass="2" type="collection">
+        <element label="JSON" max_length="40000" name="json" type="string_full_utf8"/>
+        <element attributes="edge_encryption_enabled=true" label="Name" max_length="40" name="name" type="string"/>
+        <element label="Quiz" max_length="32" name="quiz" reference="x_0221_pubquiz_quiz" type="reference"/>
+        <index name="index">
+            <element name="quiz"/>
+        </index>
+    </element>
+</database>

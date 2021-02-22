@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?><database>
+    <element label="Quiz Round m2m" max_length="40" name="x_0221_pubquiz_quiz_round_m2m" sizeclass="169" type="collection">
+        <element label="Round" max_length="32" name="child" reference="x_0221_pubquiz_round" type="reference"/>
+        <element label="Number" max_length="40" name="number" type="integer"/>
+        <element label="Quiz" max_length="32" name="parent" reference="x_0221_pubquiz_quiz" type="reference"/>
+        <index name="index">
+            <element name="parent"/>
+        </index>
+        <index name="index2">
+            <element name="child"/>
+        </index>
+    </element>
+</database>

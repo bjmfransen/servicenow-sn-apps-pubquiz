@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?><database>
+    <element label="Question" max_length="40" name="x_0221_pubquiz_question" sizeclass="1319" type="collection">
+        <element attributes="edge_encryption_enabled=true" label="Answer (en)" max_length="400" name="answer_en" type="string"/>
+        <element label="Answer (nl)" max_length="400" name="answer_nl" type="string"/>
+        <element choice="1" label="Category" max_length="32" name="category" type="choice">
+            <choice>
+                <element inactive_on_update="false" label="Algemeen" language="nl" sequence="10" value="general"/>
+                <element inactive_on_update="false" label="General" sequence="10" value="general"/>
+                <element inactive_on_update="false" label="Sport" language="nl" sequence="20" value="sports"/>
+                <element inactive_on_update="false" label="Sports" sequence="20" value="sports"/>
+                <element inactive_on_update="false" label="Film &amp; TV" sequence="30" value="film-tv"/>
+                <element inactive_on_update="false" label="Geschiedenis" language="nl" sequence="40" value="history"/>
+                <element inactive_on_update="false" label="History" sequence="40" value="history"/>
+                <element inactive_on_update="false" label="Aardrijkskunde" language="nl" sequence="50" value="geography"/>
+                <element inactive_on_update="false" label="Geography" sequence="50" value="geography"/>
+                <element inactive_on_update="false" label="Art" sequence="70" value="art"/>
+                <element inactive_on_update="false" label="Kunst" language="nl" sequence="70" value="art"/>
+                <element inactive_on_update="false" label="Literature" sequence="80" value="literature"/>
+                <element inactive_on_update="false" label="Literatuur" language="nl" sequence="80" value="literature"/>
+                <element inactive_on_update="false" label="Science" sequence="90" value="science"/>
+                <element inactive_on_update="false" label="Wetenschap" language="nl" sequence="90" value="science"/>
+                <element inactive_on_update="false" label="Music" sequence="100" value="music"/>
+                <element inactive_on_update="false" label="Muziek" sequence="100" value="music"/>
+                <element inactive_on_update="false" label="Politics" sequence="160" value="politics"/>
+                <element inactive_on_update="false" label="Politiek" language="nl" sequence="160" value="politics"/>
+            </choice>
+        </element>
+        <element attributes="pdf_cell_type=image" label="Image" max_length="40" name="image" reference="db_image" type="reference"/>
+        <element attributes="edge_encryption_enabled=true" label="Label (en)" max_length="40" name="label_en" type="string"/>
+        <element label="Label (nl)" max_length="40" name="label_nl" type="string"/>
+        <element attributes="edge_encryption_enabled=true" default="javascript:global.getNextObjNumberPadded();" label="Number" max_length="40" name="number" type="string"/>
+        <element attributes="edge_encryption_enabled=true" label="Question (en)" max_length="400" name="question_en" type="string"/>
+        <element label="Question (nl)" max_length="400" name="question_nl" type="string"/>
+        <index name="index">
+            <element name="category"/>
+        </index>
+    </element>
+</database>

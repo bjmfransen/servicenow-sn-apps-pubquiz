@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?><database>
+    <element label="Round" max_length="40" name="x_0221_pubquiz_round" sizeclass="172" type="collection">
+        <element label="Name" max_length="40" name="name" type="string"/>
+        <element label="Theme (en)" max_length="40" name="theme_en" type="string"/>
+        <element label="Theme (nl)" max_length="40" name="theme_nl" type="string"/>
+    </element>
+</database>
