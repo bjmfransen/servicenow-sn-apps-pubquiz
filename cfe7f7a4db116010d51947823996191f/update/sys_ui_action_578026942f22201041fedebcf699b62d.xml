@@ -30,10 +30,13 @@
         <onclick>exportQuizToXML()</onclick>
         <order>200</order>
         <script><![CDATA[function exportQuizToXML() {
-	var url = new GlideURL('x_0221_pubquiz_export_quiz.do');
-	url.addParam('sysparm_sys_id', g_form.getUniqueValue());
-	g_navigation.open(url.getURL());
-}]]></script>
+	var url = new GlideURL('export_quiz.do');
+	var sysId = g_form.getUniqueValue();
+	url.addParam('sysparm_sys_id', sysId);
+	g_navigation.open(url.getURL())
+	return;	
+}	
+]]></script>
         <show_insert>false</show_insert>
         <show_multiple_update>false</show_multiple_update>
         <show_query>false</show_query>
@@ -44,15 +47,15 @@
         <sys_domain>global</sys_domain>
         <sys_domain_path>/</sys_domain_path>
         <sys_id>578026942f22201041fedebcf699b62d</sys_id>
-        <sys_mod_count>7</sys_mod_count>
+        <sys_mod_count>17</sys_mod_count>
         <sys_name>Export to XML</sys_name>
         <sys_overrides/>
         <sys_package display_value="PubQuiz" source="x_0221_pubquiz">cfe7f7a4db116010d51947823996191f</sys_package>
         <sys_policy/>
         <sys_scope display_value="PubQuiz">cfe7f7a4db116010d51947823996191f</sys_scope>
         <sys_update_name>sys_ui_action_578026942f22201041fedebcf699b62d</sys_update_name>
-        <sys_updated_by>admin</sys_updated_by>
-        <sys_updated_on>2021-02-21 16:52:55</sys_updated_on>
+        <sys_updated_by>bert-jan.fransen</sys_updated_by>
+        <sys_updated_on>2021-02-25 15:42:22</sys_updated_on>
         <table>x_0221_pubquiz_quiz</table>
         <ui11_compatible>true</ui11_compatible>
         <ui16_compatible>false</ui16_compatible>
